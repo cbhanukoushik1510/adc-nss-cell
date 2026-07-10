@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect } from "react";
-import { sendVisitorNotification } from "@/lib/ntfy";
 
 export default function VisitorTracker() {
   useEffect(() => {
-    sendVisitorNotification();
+    console.log("VisitorTracker Mounted 🚀");
+
+    fetch("/api/notify", {
+      method: "POST",
+    })
+      .then((res) => {
+        console.log("Status:", res.status);
+        return res.json();
+      })
+      .then((data) => console.log(data))
+      .catch(console.error);
   }, []);
 
   return null;

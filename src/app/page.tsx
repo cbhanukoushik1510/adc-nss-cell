@@ -13,9 +13,9 @@ import VisitorTracker from "@/components/common/VisitorTracker";
 export default function HomePage() {
   return (
     <>
-    <VisitorTracker />
+    
       <Navbar />
-
+<VisitorTracker />
       <main className="bg-slate-50">
         <Hero />
 

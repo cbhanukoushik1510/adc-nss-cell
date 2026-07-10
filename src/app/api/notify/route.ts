@@ -5,25 +5,20 @@ export async function POST() {
     await fetch("https://ntfy.sh/adc-nss-cell", {
       method: "POST",
       headers: {
-        Title: "🌐 ADC NSS Visitor",
-        
+        Title: "New Website Visitor",
+        Priority: "3",
         Tags: "computer",
       },
-      body: "A new visitor opened the ADC NSS Portal.",
+      body: "🌐 A new visitor opened the ADC NSS Portal.",
     });
 
-    return NextResponse.json({
-      success: true,
-    });
+    return NextResponse.json({ success: true });
   } catch (error) {
+    console.error(error);
+
     return NextResponse.json(
-      {
-        success: false,
-        error: "Notification failed",
-      },
-      {
-        status: 500,
-      }
+      { success: false },
+      { status: 500 }
     );
   }
 }
