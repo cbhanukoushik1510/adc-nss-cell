@@ -9,8 +9,13 @@ import Footer from "@/components/layout/Footer";
 import LeadershipMessage from "@/components/home/LeadershipMessage";
 import NssCommittee from "@/components/home/NssCommittee";
 import FeaturedActivities from "@/components/home/FeaturedActivities";
-
+import { sendVisitorNotification } from "@/lib/ntfy";
+import { useEffect } from "react";
 export default function HomePage() {
+  useEffect(() => {
+    sendVisitorNotification();
+  }, []);
+
   return (
     <>
       <Navbar />
