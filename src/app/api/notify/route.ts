@@ -6,7 +6,7 @@ export async function POST() {
       method: "POST",
       headers: {
         Title: "🌐 ADC NSS Visitor",
-        Priority: "3",
+        
         Tags: "computer",
       },
       body: "A new visitor opened the ADC NSS Portal.",
