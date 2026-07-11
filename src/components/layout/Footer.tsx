@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MapPin, Phone, Mail } from "lucide-react";
 import { FaInstagram } from "react-icons/fa";
 import { FaLinkedin } from "react-icons/fa";
+import VisitorCounter from "@/components/home/VisitorCounter";
 export default function Footer() {
   return (
     <footer className="bg-[#08153F] text-white">
@@ -84,7 +85,13 @@ export default function Footer() {
               <Mail size={18} />
               <span>nss@adc.edu.in</span>
             </div>
+<div className="border-t border-white/10 py-5">
+  <div className="flex items-center justify-center gap-3 text-white">
+    
+    <VisitorCounter />
 
+  </div>
+</div>
           </div>
 
         </div>
@@ -114,20 +121,28 @@ export default function Footer() {
       </div>
 
       <div className="border-t border-white/10 py-5 text-center text-sm text-gray-400">
-        © 2026 Aurora's Degree & PG College NSS Cell. All Rights Reserved.
-      </div>
-<p className="mt-3 flex items-center justify-center gap-2 text-sm text-gray-400">
-  Designed & Developed by
-  <a
-    href="https://www.linkedin.com/in/cbhanukoushik15"
-    target="_blank"
-    rel="noopener noreferrer"
-    className="flex items-center gap-2 font-semibold text-blue-300 transition hover:text-white"
-  >
-    <FaLinkedin className="text-[#0A66C2]" />
-    C Bhanu Koushik
-  </a>
-</p>
+
+  <p>
+    © 2026 Aurora's Degree & PG College NSS Cell. All Rights Reserved.
+  </p>
+
+  <p className="mt-2 flex items-center justify-center gap-2">
+
+    Designed & Developed by
+
+    <a
+      href="https://www.linkedin.com/in/cbhanukoushik15"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex items-center gap-2 font-semibold text-blue-300 transition hover:text-white"
+    >
+      <FaLinkedin className="text-[#0A66C2]" />
+      C Bhanu Koushik
+    </a>
+
+  </p>
+
+</div>
     </footer>
   );
 }

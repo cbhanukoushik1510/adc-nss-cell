@@ -17,9 +17,9 @@ export const leadership = [
       {
         name: "Harshini",
         role: "NSS Wing Head - Unit 2",
-        department: "Bcom Hons",
+        department: "Bcom Honours",
         year: "2025-2026",
-        photo: "/leaders/harshini.jpg",
+        //photo: "/leaders/harshini.jpg",
 
         linkedin: "https://www.linkedin.com/in/harshini-veerabomma-1404b2321/",
 
@@ -29,9 +29,9 @@ export const leadership = [
         role: "NSS Deputy Wing Head ",
         department: "BBA BA",
         year: "2025-2026",
-        photo: "/leaders/karthik.jpg",
+        photo: "/leaders/karthik.png",
 
-        linkedin: "",
+        linkedin: "https://www.linkedin.com/in/sura-karthik-14b0912bb/",
 
       },
     ],
@@ -46,7 +46,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 1",
         department: "MIGC - LifeSciences",
         year: "2024-2025",
-        photo: "/leaders/head1.jpg",
+        // photo: "/leaders/head1.png",
         linkedin: "",
       },
 
@@ -55,7 +55,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 2",
         department: "BBA - Marketing",
         year: "2024-2025",
-        photo: "/leaders/abhinaya.jpeg",
+        photo: "/leaders/abhinaya.png",
         linkedin: "https://www.linkedin.com/in/abhinaya-sri-reddy-pannala-799505398/",
       },
       {
@@ -77,7 +77,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 1",
         department: "BCA",
         year: "2023-2024",
-        photo: "/leaders/head1.jpg",
+       // photo: "/leaders/head1.png",
         linkedin: "",
       },
 
@@ -86,7 +86,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 2",
         department: "BBA",
         year: "2023-2024",
-        photo: "/leaders/head2.jpg",
+       // photo: "/leaders/head2.png",
         linkedin: "",
       },
     ],

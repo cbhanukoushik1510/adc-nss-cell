@@ -1,55 +1,63 @@
-"use client";
-
 import {
+  CalendarDays,
+  Users,
+  ClipboardCheck,
   Bell,
-  Search,
 } from "lucide-react";
 
-export default function Topbar() {
+export default function WelcomeBanner() {
   return (
-    <header className="flex items-center justify-between rounded-3xl bg-white p-6 shadow-md">
+    <section className="mt-6 rounded-3xl bg-gradient-to-r from-[#0F2B7B] to-[#1E40AF] p-8 text-white shadow-xl">
 
-      <div className="flex items-center gap-3 rounded-xl border px-4 py-3">
+      <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
 
-        <Search size={18} className="text-gray-500" />
+        <div>
 
-        <input
-          placeholder="Search..."
-          className="outline-none"
-        />
+          <p className="text-blue-200 text-sm uppercase tracking-widest">
+            ADC NSS Operations
+          </p>
 
-      </div>
+          <h1 className="mt-2 text-4xl font-bold">
+            NSS Command Center
+          </h1>
 
-      <div className="flex items-center gap-6">
-
-        <button className="relative">
-
-          <Bell size={24} />
-
-          <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-red-500"></span>
-
-        </button>
-
-        <div className="text-right">
-
-          <h3 className="font-semibold">
-            Bhanu Koushik
-          </h3>
-
-          <p className="text-sm text-gray-500">
-            NSS Wing Head • Unit 1
+          <p className="mt-3 max-w-2xl text-blue-100">
+            Monitor volunteers, manage events, track coordinators,
+            and oversee all NSS activities from one place.
           </p>
 
         </div>
 
-        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#0F2B7B] text-lg font-bold text-white">
+        <div className="grid grid-cols-2 gap-4">
 
-          BK
+          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+            <Users className="mb-2" />
+            <p className="text-sm text-blue-100">Active Volunteers</p>
+            <h3 className="text-3xl font-bold">248</h3>
+          </div>
+
+          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+            <CalendarDays className="mb-2" />
+            <p className="text-sm text-blue-100">Upcoming Events</p>
+            <h3 className="text-3xl font-bold">12</h3>
+          </div>
+
+          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+            <ClipboardCheck className="mb-2" />
+            <p className="text-sm text-blue-100">Pending Tasks</p>
+            <h3 className="text-3xl font-bold">6</h3>
+          </div>
+
+          <div className="rounded-2xl bg-white/10 p-4 backdrop-blur">
+            <Bell className="mb-2" />
+            <p className="text-sm text-blue-100">Announcements</p>
+            <h3 className="text-3xl font-bold">3</h3>
+          </div>
 
         </div>
 
       </div>
 
-    </header>
+    </section>
   );
 }

@@ -10,6 +10,7 @@ import LeadershipMessage from "@/components/home/LeadershipMessage";
 import NssCommittee from "@/components/home/NssCommittee";
 import FeaturedActivities from "@/components/home/FeaturedActivities";
 import VisitorTracker from "@/components/common/VisitorTracker";
+import VisitorCounter from "@/components/home/VisitorCounter";
 export default function HomePage() {
   return (
     <>
@@ -39,6 +40,7 @@ export default function HomePage() {
       </main>
 
       <Footer />
+    
     </>
   );
 }

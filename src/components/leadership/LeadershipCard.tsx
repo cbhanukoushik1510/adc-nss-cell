@@ -12,12 +12,12 @@ export default function LeadershipCard({
     <div className="overflow-hidden rounded-3xl bg-white shadow-lg transition hover:-translate-y-2">
 
       <Image
-        src={member.photo}
-        alt={member.name}
-        width={400}
-        height={400}
-        className="h-80 w-full object-cover"
-      />
+  src={member.photo || "/leaders/default.jpg"}
+  alt={member.name}
+  width={500}
+  height={600}
+  className="object-contain bg-slate-100"
+/>
 
       <div className="p-6">
 
