@@ -7,7 +7,7 @@ export const leadership = [
         name: "C Bhanu Koushik",
         role: "NSS Wing Head - Unit 1",
         department: "Bachelor of Computer Applications",
-        photo: "/leaders/bhanu.png",
+        photo: "/leaders/bhanu.jpg",
         year: "2025-2026",
         linkedin:
           "https://linkedin.com/in/cbhanukoushik15",
@@ -29,7 +29,7 @@ export const leadership = [
         role: "NSS Deputy Wing Head ",
         department: "BBA BA",
         year: "2025-2026",
-        photo: "/leaders/karthik.png",
+        photo: "/leaders/karthik.jpg",
 
         linkedin: "https://www.linkedin.com/in/sura-karthik-14b0912bb/",
 
@@ -55,7 +55,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 2",
         department: "BBA - Marketing",
         year: "2024-2025",
-        photo: "/leaders/abhinaya.png",
+        photo: "/leaders/abhinaya.jpg",
         linkedin: "https://www.linkedin.com/in/abhinaya-sri-reddy-pannala-799505398/",
       },
       {
@@ -63,7 +63,7 @@ export const leadership = [
         role: "NSS Deputy Wing Head ",
         department: "Bcom Computer Applications",
         year: "2024-2025",
-        photo: "/leaders/vivek.png",
+        photo: "/leaders/vivek.jpg",
         linkedin: "https://www.linkedin.com/in/vivek-deshu-24a7b9307/",
       },
     ],
