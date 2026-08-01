@@ -60,10 +60,10 @@ export default function Sidebar() {
   };
 
   return (
-    <aside className="fixed left-0 top-0 z-50 flex h-screen w-72 flex-col bg-[#0F2B7B] text-white shadow-xl">
+    <aside className="fixed left-0 top-0 z-50 flex h-screen w-72 lg:w-72 -translate-x-full flex-col bg-[#0F2B7B] text-white shadow-xl transition-transform duration-300 lg:translate-x-0">
 
       {/* Header */}
-      <div className="border-b border-white/20 p-6">
+      <div className="border-b border-white/20 p-5">
         <h1 className="text-2xl font-bold">ADC NSS</h1>
         <p className="text-sm text-blue-200">
           Volunteer Portal
@@ -71,7 +71,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-2 px-4 py-6">
+      <nav className="flex-1 space-y-2 px-3 py-5">
         {menus.map((menu) => {
           const Icon = menu.icon;
 
@@ -79,7 +79,7 @@ export default function Sidebar() {
             <Link
               key={menu.title}
               href={menu.href}
-              className="flex items-center gap-4 rounded-xl px-4 py-3 transition hover:bg-white/10"
+              className="flex items-center gap-4 rounded-xl px-4 py-3 text-sm font-medium transition hover:bg-white/10"
             >
               <Icon size={20} />
               <span>{menu.title}</span>
@@ -92,7 +92,7 @@ export default function Sidebar() {
       <div className="border-t border-white/20 p-4">
         <button
           onClick={handleLogout}
-          className="flex w-full items-center justify-center gap-3 rounded-xl bg-red-600 px-4 py-3 font-semibold text-white transition hover:bg-red-700"
+          className="flex w-full items-center justify-center gap-3 rounded-xl bg-red-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-700"
         >
           <LogOut size={20} />
           Logout

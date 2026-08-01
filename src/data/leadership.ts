@@ -6,7 +6,7 @@ export const leadership = [
       {
         name: "C Bhanu Koushik",
         role: "NSS Wing Head - Unit 1",
-        department: "Bachelor of Computer Applications",
+        department: "Bachelor of Computer Applications (BCA)",
         photo: "/leaders/bhanu.jpg",
         year: "2025-2026",
         linkedin:
@@ -19,7 +19,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 2",
         department: "Bcom Honours",
         year: "2025-2026",
-        //photo: "/leaders/harshini.jpg",
+        photo: "/leaders/harshini.jpeg",
 
         linkedin: "https://www.linkedin.com/in/harshini-veerabomma-1404b2321/",
 

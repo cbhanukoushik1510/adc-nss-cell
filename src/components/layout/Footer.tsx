@@ -8,23 +8,23 @@ export default function Footer() {
   return (
     <footer className="bg-[#08153F] text-white">
 
-      <div className="mx-auto max-w-7xl px-6 py-14 grid gap-10 md:grid-cols-4">
+      <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-5 py-12 sm:px-6 md:grid-cols-2 lg:grid-cols-4">
 
         {/* College */}
         <div>
           <Image
-            src="/logos/aurora-logo.png"
-            alt="Aurora Logo"
-            width={70}
-            height={70}
-            className="rounded-full bg-white p-2"
-          />
+  src="/logos/aurora-logo.png"
+  alt="Aurora Logo"
+  width={70}
+  height={70}
+  className="h-16 w-16 rounded-full bg-white p-2 sm:h-18 sm:w-18 lg:h-20 lg:w-20"
+/>
 
-          <h3 className="mt-5 text-xl font-bold">
+          <h3 className="mt-4 text-lg font-bold leading-snug sm:text-xl">
             Aurora's Degree & PG College
           </h3>
 
-          <p className="mt-3 text-gray-300 leading-7">
+          <p className="mt-3 text-sm leading-6 text-gray-300 sm:text-base">
             National Service Scheme (NSS)
             <br />
             Not Me, But You.
@@ -33,7 +33,7 @@ export default function Footer() {
 
         {/* Quick Links */}
         <div>
-          <h3 className="mb-5 text-lg font-semibold">
+          <h3 className="mb-4 text-lg font-semibold">
             Quick Links
           </h3>
 
@@ -67,7 +67,7 @@ export default function Footer() {
 
           <div className="space-y-4 text-gray-300">
 
-            <div className="flex gap-3">
+            <div className="flex items-start gap-3">
               <MapPin size={18} />
               <span>
                 RTC X Roads,
@@ -85,11 +85,9 @@ export default function Footer() {
               <Mail size={18} />
               <span>nss@adc.edu.in</span>
             </div>
-<div className="border-t border-white/10 py-5">
-  <div className="flex items-center justify-center gap-3 text-white">
-    
+<div className="mt-6 border-t border-white/10 pt-5">
+  <div className="flex justify-center md:justify-start">
     <VisitorCounter />
-
   </div>
 </div>
           </div>
@@ -107,7 +105,7 @@ export default function Footer() {
             href="https://www.instagram.com/nss_aurora_/"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-110"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full transition hover:scale-110 sm:h-14 sm:w-14"
             style={{
               background:
                 "linear-gradient(45deg,#F58529,#FEDA77,#DD2A7B,#8134AF,#515BD4)",
@@ -120,13 +118,13 @@ export default function Footer() {
 
       </div>
 
-      <div className="border-t border-white/10 py-5 text-center text-sm text-gray-400">
+      <div className="border-t border-white/10 px-4 py-6 text-center text-xs text-gray-400 sm:text-sm">
 
   <p>
     © 2026 Aurora's Degree & PG College NSS Cell. All Rights Reserved.
   </p>
 
-  <p className="mt-2 flex items-center justify-center gap-2">
+  <p className="mt-3 flex flex-wrap items-center justify-center gap-2 text-center">
 
     Designed & Developed by
 

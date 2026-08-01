@@ -26,12 +26,12 @@ const menu = [
   },
   {
     title: "Volunteers",
-    href: "/volunteers",
+    href: "/head/volunteers",
     icon: Users,
   },
   {
     title: "Events",
-    href: "/events",
+    href: "/head/events",
     icon: CalendarDays,
   },
   {
