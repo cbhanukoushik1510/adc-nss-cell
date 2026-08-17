@@ -46,7 +46,7 @@ export const leadership = [
         role: "NSS Wing Head - Unit 1",
         department: "MIGC - LifeSciences",
         year: "2024-2025",
-        // photo: "/leaders/head1.png",
+        photo: "/leaders/anirudh.jpg",
         linkedin: "",
       },
 
