@@ -5,12 +5,13 @@ import Link from "next/link";
 import {
   CheckCircle,
   Clock,
+  LogOut,
   RefreshCw,
   Search,
   Users,
   XCircle,
 } from "lucide-react";
-
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 interface Volunteer {
@@ -29,6 +30,8 @@ interface Volunteer {
 type FilterType = "All" | "Pending" | "Approved" | "Rejected";
 
 export default function AdminPage() {
+  const router = useRouter();
+
   const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -37,12 +40,47 @@ export default function AdminPage() {
   const [filter, setFilter] = useState<FilterType>("Pending");
 
   const [error, setError] = useState("");
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  /* --------------------------------
+     Logout
+  -------------------------------- */
+
+  const handleLogout = async () => {
+    const confirmed = window.confirm(
+      "Are you sure you want to logout?"
+    );
+
+    if (!confirmed) return;
+
+    setLoggingOut(true);
+    setError("");
+
+    const { error: logoutError } =
+      await supabase.auth.signOut();
+
+    if (logoutError) {
+      console.error("Logout error:", logoutError);
+
+      setError(
+        "Unable to logout. Please try again."
+      );
+
+      setLoggingOut(false);
+      return;
+    }
+
+    router.replace("/login");
+    router.refresh();
+  };
 
   /* --------------------------------
      Load Volunteers
   -------------------------------- */
 
-  const loadVolunteers = async (showRefresh = false) => {
+  const loadVolunteers = async (
+    showRefresh = false
+  ) => {
     if (showRefresh) {
       setRefreshing(true);
     } else {
@@ -56,17 +94,17 @@ export default function AdminPage() {
         .from("volunteers")
         .select(
           `
-          id,
-          full_name,
-          roll_number,
-          department,
-          course,
-          college_email,
-          mobile_number,
-          status,
-          photo_url,
-          created_at
-        `
+            id,
+            full_name,
+            roll_number,
+            department,
+            course,
+            college_email,
+            mobile_number,
+            status,
+            photo_url,
+            created_at
+          `
         )
         .order("created_at", {
           ascending: false,
@@ -151,22 +189,22 @@ export default function AdminPage() {
         return true;
       }
 
-      return (
+      return Boolean(
         volunteer.full_name
           ?.toLowerCase()
           .includes(searchText) ||
-        volunteer.roll_number
-          ?.toLowerCase()
-          .includes(searchText) ||
-        volunteer.college_email
-          ?.toLowerCase()
-          .includes(searchText) ||
-        volunteer.department
-          ?.toLowerCase()
-          .includes(searchText) ||
-        volunteer.course
-          ?.toLowerCase()
-          .includes(searchText)
+          volunteer.roll_number
+            ?.toLowerCase()
+            .includes(searchText) ||
+          volunteer.college_email
+            ?.toLowerCase()
+            .includes(searchText) ||
+          volunteer.department
+            ?.toLowerCase()
+            .includes(searchText) ||
+          volunteer.course
+            ?.toLowerCase()
+            .includes(searchText)
       );
     });
   }, [volunteers, search, filter]);
@@ -228,7 +266,6 @@ export default function AdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
-
       <div className="mx-auto max-w-7xl">
 
         {/* =================================
@@ -248,24 +285,45 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => loadVolunteers(true)}
-            disabled={refreshing}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white transition hover:bg-[#143a96] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <RefreshCw
-              className={`h-5 w-5 ${
-                refreshing
-                  ? "animate-spin"
-                  : ""
-              }`}
-            />
+          {/* Header Buttons */}
 
-            {refreshing
-              ? "Refreshing..."
-              : "Refresh Applications"}
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+
+            <button
+              type="button"
+              onClick={() =>
+                loadVolunteers(true)
+              }
+              disabled={refreshing || loggingOut}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white transition hover:bg-[#143a96] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw
+                className={`h-5 w-5 ${
+                  refreshing
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+
+              {refreshing
+                ? "Refreshing..."
+                : "Refresh"}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={loggingOut}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <LogOut className="h-5 w-5" />
+
+              {loggingOut
+                ? "Logging out..."
+                : "Logout"}
+            </button>
+
+          </div>
 
         </div>
 
@@ -275,6 +333,7 @@ export default function AdminPage() {
 
         {error && (
           <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700">
+
             <p className="font-semibold">
               {error}
             </p>
@@ -288,6 +347,7 @@ export default function AdminPage() {
             >
               Try again
             </button>
+
           </div>
         )}
 
@@ -456,29 +516,15 @@ export default function AdminPage() {
                 >
                   {item}
 
-                  {item === "Pending" && (
-                    <span className="ml-2">
-                      {pendingCount}
-                    </span>
-                  )}
-
-                  {item === "Approved" && (
-                    <span className="ml-2">
-                      {approvedCount}
-                    </span>
-                  )}
-
-                  {item === "Rejected" && (
-                    <span className="ml-2">
-                      {rejectedCount}
-                    </span>
-                  )}
-
-                  {item === "All" && (
-                    <span className="ml-2">
-                      {volunteers.length}
-                    </span>
-                  )}
+                  <span className="ml-2">
+                    {item === "Pending"
+                      ? pendingCount
+                      : item === "Approved"
+                        ? approvedCount
+                        : item === "Rejected"
+                          ? rejectedCount
+                          : volunteers.length}
+                  </span>
                 </button>
 
               ))}
@@ -501,6 +547,7 @@ export default function AdminPage() {
               </p>
 
             </div>
+
           ) : filteredVolunteers.length === 0 ? (
 
             /* =================================
@@ -524,6 +571,7 @@ export default function AdminPage() {
               </p>
 
             </div>
+
           ) : (
 
             /* =================================
@@ -645,7 +693,6 @@ export default function AdminPage() {
         </section>
 
       </div>
-
     </main>
   );
 }
