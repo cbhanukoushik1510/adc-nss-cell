@@ -1,7 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Send, RotateCcw } from "lucide-react";
 
-export default function SubmitSection() {
+interface SubmitSectionProps {
+  submitting?: boolean;
+}
+
+export default function SubmitSection({
+  submitting = false,
+}: SubmitSectionProps) {
   return (
     <section className="pt-6">
 

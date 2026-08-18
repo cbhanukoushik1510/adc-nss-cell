@@ -24,7 +24,7 @@ export default function ContactInfo({
         {/* College Email */}
         <div>
           <label className="mb-2 block font-semibold">
-            College Email <span className="text-red-500">*</span>
+            College Email 
           </label>
 
           <input
@@ -39,7 +39,7 @@ export default function ContactInfo({
         {/* Personal Email */}
         <div>
           <label className="mb-2 block font-semibold">
-            Personal Email
+            Personal Email <span className="text-red-500">*</span>
           </label>
 
           <input

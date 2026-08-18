@@ -38,6 +38,7 @@ export default function AcademicInfo({
             <option>B.Com</option>
             <option>B.Sc</option>
             <option>BA</option>
+            <option>Life Sciences</option>
           </select>
         </div>
 

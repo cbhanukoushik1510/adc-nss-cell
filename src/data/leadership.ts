@@ -47,7 +47,7 @@ export const leadership = [
         department: "MIGC - LifeSciences",
         year: "2024-2025",
         photo: "/leaders/anirudh.jpg",
-        linkedin: "",
+        linkedin: "https://www.linkedin.com/in/anirudh-goud-b57b9330a/",
       },
 
       {
