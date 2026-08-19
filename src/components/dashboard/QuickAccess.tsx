@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
+
 import { quickAccess } from "@/data/quickAccess";
 
 const colorMap = {
@@ -13,33 +15,63 @@ const colorMap = {
 export default function QuickAccess() {
   return (
     <section className="rounded-3xl bg-white p-8 shadow-lg">
-      <h2 className="text-2xl font-bold text-[#0F2B7B]">Quick Access</h2>
 
-      <div className="mt-8 grid grid-cols-2 gap-5 md:grid-cols-3">
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-[#0F2B7B]">
+          Quick Access
+        </h2>
+
+        <p className="mt-1 text-gray-500">
+          Quickly access your NSS services and resources.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-5 md:grid-cols-3">
+
         {quickAccess.map((item) => {
           const Icon = item.icon;
+
+          const color =
+            colorMap[
+              item.color as keyof typeof colorMap
+            ] || colorMap.blue;
 
           return (
             <Link
               key={item.title}
               href={item.href}
-              className="rounded-2xl border p-6 hover:shadow-lg transition block"
+              aria-label={`Open ${item.title}`}
+              className="group relative rounded-2xl border p-6 transition-all duration-300 hover:-translate-y-1 hover:border-[#0F2B7B] hover:shadow-lg"
             >
+
+              {/* Icon */}
+
               <div
-                className={`mb-4 flex h-14 w-14 items-center justify-center rounded-2xl ${
-                  colorMap[item.color as keyof typeof colorMap]
-                }`}
+                className={`mb-5 flex h-14 w-14 items-center justify-center rounded-2xl ${color} transition-transform duration-300 group-hover:scale-110`}
               >
                 <Icon size={28} />
               </div>
 
-              <h3 className="font-semibold">{item.title}</h3>
+              {/* Arrow */}
 
-              <p className="text-sm text-gray-500">{item.href}</p>
+              <div className="absolute right-5 top-5 text-gray-300 transition-colors group-hover:text-[#0F2B7B]">
+                <ArrowUpRight size={20} />
+              </div>
+
+              {/* Title */}
+
+              <h3 className="font-semibold text-[#0F2B7B]">
+                {item.title}
+              </h3>
+
+             
+
             </Link>
           );
         })}
+
       </div>
+
     </section>
   );
 }

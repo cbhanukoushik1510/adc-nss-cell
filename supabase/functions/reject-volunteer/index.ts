@@ -275,30 +275,24 @@ Deno.serve(async (req) => {
     } =
       await supabaseAdmin
         .from("volunteer_rejections")
-        .insert({
-          volunteer_id:
-            volunteer.id,
+                .insert({
+          volunteer_id: volunteer.id,
 
-          full_name:
-            volunteer.full_name,
+          full_name: volunteer.full_name,
 
-          roll_number:
-            volunteer.roll_number,
+          roll_number: volunteer.roll_number,
 
-          college_email:
-            volunteer.college_email,
+          college_email: volunteer.college_email,
 
-          rejection_reason:
-            rejectionReason,
+          rejection_reason: rejectionReason,
 
-          rejected_by:
-            rejectedBy,
+          rejected_by: rejectedBy,
 
-          volunteer_data:
-            rejectionSnapshot,
+          volunteer_data: rejectionSnapshot,
 
-          created_at:
-            new Date().toISOString(),
+          rejected_at: new Date().toISOString(),
+
+          created_at: new Date().toISOString(),
         })
         .select()
         .single();

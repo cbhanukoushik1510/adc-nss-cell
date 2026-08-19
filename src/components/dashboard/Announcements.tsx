@@ -1,6 +1,19 @@
+"use client";
+
 import Link from "next/link";
 import { Bell, ArrowRight } from "lucide-react";
-import { announcements } from "@/data/announcements";
+import { useEffect, useState } from "react";
+
+import { supabase } from "@/lib/supabase";
+
+interface Announcement {
+  id: string;
+  title: string;
+  description: string | null;
+  category: string;
+  color: string;
+  created_at: string;
+}
 
 const badgeColors = {
   red: "bg-red-100 text-red-700",
@@ -9,6 +22,54 @@ const badgeColors = {
 };
 
 export default function Announcements() {
+  const [items, setItems] = useState<Announcement[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadAnnouncements();
+  }, []);
+
+  const loadAnnouncements = async () => {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("announcements")
+      .select(`
+        id,
+        title,
+        description,
+        category,
+        color,
+        created_at
+      `)
+      .order("created_at", { ascending: false })
+      .limit(3);
+
+    if (error) {
+      console.error(
+        "Error loading announcements:",
+        error
+      );
+
+      setItems([]);
+    } else {
+      setItems(data || []);
+    }
+
+    setLoading(false);
+  };
+
+  const formatDate = (date: string) => {
+    return new Date(date).toLocaleDateString(
+      "en-IN",
+      {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      }
+    );
+  };
+
   return (
     <section className="rounded-3xl bg-white p-8 shadow-lg">
 
@@ -33,52 +94,76 @@ export default function Announcements() {
 
       </div>
 
-      <div className="space-y-5">
+      {loading ? (
+        <p className="text-gray-500">
+          Loading announcements...
+        </p>
+      ) : items.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 p-8 text-center">
 
-        {announcements.map((item) => (
+          <Bell className="mx-auto h-10 w-10 text-gray-400" />
 
-          <div
-            key={item.id}
-            className="rounded-2xl border p-5 transition hover:border-[#0F2B7B] hover:shadow-md"
-          >
+          <p className="mt-4 font-semibold text-gray-600">
+            No announcements
+          </p>
 
-            <div className="flex items-center justify-between">
+          <p className="mt-1 text-sm text-gray-400">
+            New NSS announcements will appear here.
+          </p>
 
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${
-                  badgeColors[item.color as keyof typeof badgeColors]
-                }`}
+        </div>
+      ) : (
+        <div className="space-y-5">
+
+          {items.map((item) => {
+
+            const badgeColor =
+              badgeColors[
+                item.color as keyof typeof badgeColors
+              ] || badgeColors.blue;
+
+            return (
+              <div
+                key={item.id}
+                className="rounded-2xl border p-5 transition hover:border-[#0F2B7B] hover:shadow-md"
               >
-                {item.category}
-              </span>
 
-              <span className="text-sm text-gray-500">
-                {item.date}
-              </span>
+                <div className="flex items-center justify-between gap-4">
 
-            </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold ${badgeColor}`}
+                  >
+                    {item.category}
+                  </span>
 
-            <h3 className="mt-4 text-lg font-bold text-[#0F2B7B]">
-              {item.title}
-            </h3>
+                  <span className="text-sm text-gray-500">
+                    {formatDate(item.created_at)}
+                  </span>
 
-            <p className="mt-2 text-gray-600">
-              {item.description}
-            </p>
+                </div>
 
-            <button className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#0F2B7B] hover:underline">
+                <h3 className="mt-4 text-lg font-bold text-[#0F2B7B]">
+                  {item.title}
+                </h3>
 
-              Read More
+                <p className="mt-2 text-gray-600">
+                  {item.description || "No description available."}
+                </p>
 
-              <ArrowRight size={16} />
+                <button
+                  type="button"
+                  className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#0F2B7B] hover:underline"
+                >
+                  Read More
+                  <ArrowRight size={16} />
+                </button>
 
-            </button>
+              </div>
+            );
+          })}
 
-          </div>
-
-        ))}
-
-      </div>
+        </div>
+      )}
 
     </section>
   );

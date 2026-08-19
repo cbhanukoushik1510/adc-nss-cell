@@ -44,18 +44,10 @@ interface RejectedVolunteer {
   college_email: string | null;
 
   rejection_reason: string | null;
-
   rejected_by: string | null;
-
   created_at: string | null;
 
-  volunteer_data?: {
-    department?: string | null;
-    course?: string | null;
-    mobile_number?: string | null;
-    photo_url?: string | null;
-    created_at?: string | null;
-  } | null;
+  volunteer_data?: Record<string, any> | null;
 }
 
 type FilterType =
@@ -911,34 +903,37 @@ export default function AdminPage() {
                         </div>
 
                         {/* =================================
-                            REJECTION REASON
-                        ================================= */}
+    REJECTION REASON
+================================= */}
 
-                        <div className="w-full lg:max-w-md">
+<div className="w-full lg:max-w-md">
 
-                          <p className="text-xs font-bold uppercase tracking-wide text-red-600">
-                            Rejection Reason
-                          </p>
+  <p className="text-xs font-bold uppercase tracking-wide text-red-600">
+    Rejection Reason
+  </p>
 
-                          <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-4">
+  <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-4">
 
-                            <p className="whitespace-pre-wrap text-sm leading-6 text-red-800">
-                              {volunteer.rejection_reason ||
-                                "No rejection reason recorded."}
-                            </p>
+    <p className="whitespace-pre-wrap text-sm leading-6 text-red-800">
+      {volunteer.rejection_reason ||
+        "No rejection reason recorded."}
+    </p>
 
-                          </div>
+  </div>
 
-                          <p className="mt-2 text-xs text-gray-400">
+  <p className="mt-2 text-xs text-gray-400">
+    Rejected:{" "}
+    {formatDate(volunteer.created_at)}
+  </p>
 
-                            Rejected:{" "}
-                            {formatDate(
-                              volunteer.created_at
-                            )}
+  <Link
+    href={`/admin/rejected-applications/${volunteer.id}`}
+    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white transition hover:bg-[#143a96]"
+  >
+    View Full Application
+  </Link>
 
-                          </p>
-
-                        </div>
+</div>
 
                       </div>
 

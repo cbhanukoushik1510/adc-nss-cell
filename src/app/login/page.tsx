@@ -143,7 +143,7 @@ export default function LoginPage() {
       -------------------------------- */
 
       if (volunteer.status === "Approved") {
-        router.replace("/volunteer");
+        router.replace("/volunteer/dashboard");
         router.refresh();
         return;
       }

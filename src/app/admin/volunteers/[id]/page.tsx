@@ -72,6 +72,8 @@ export default function VolunteerDetailsPage() {
 
   const id = params.id as string;
 
+console.log("Admin volunteer page ID:", id);
+
   const [volunteer, setVolunteer] =
     useState<Volunteer | null>(null);
 
