@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -15,6 +15,9 @@ import { supabase } from "@/lib/supabase";
 
 interface Volunteer {
   id: string;
+
+  auth_user_id?: string | null;
+
   full_name: string | null;
   roll_number: string | null;
   hall_ticket_number: string | null;
@@ -65,23 +68,34 @@ interface Volunteer {
 
 export default function VolunteerDetailsPage() {
   const params = useParams();
+  const router = useRouter();
 
   const id = params.id as string;
 
   const [volunteer, setVolunteer] =
     useState<Volunteer | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [updating, setUpdating] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState<
-    "success" | "error" | ""
-  >("");
+  const [updating, setUpdating] =
+    useState(false);
 
-  /* --------------------------------
-     Load Volunteer
-  -------------------------------- */
+  const [rejectionReason, setRejectionReason] =
+    useState("");
+
+  const [showRejectBox, setShowRejectBox] =
+    useState(false);
+
+  const [message, setMessage] =
+    useState("");
+
+  const [messageType, setMessageType] =
+    useState<"success" | "error" | "">("");
+
+  /* ==========================================
+     LOAD VOLUNTEER
+  ========================================== */
 
   useEffect(() => {
     if (id) {
@@ -95,11 +109,12 @@ export default function VolunteerDetailsPage() {
     setMessageType("");
 
     try {
-      const { data, error } = await supabase
-        .from("volunteers")
-        .select("*")
-        .eq("id", id)
-        .single();
+      const { data, error } =
+        await supabase
+          .from("volunteers")
+          .select("*")
+          .eq("id", id)
+          .single();
 
       if (error) {
         console.error(
@@ -134,9 +149,9 @@ export default function VolunteerDetailsPage() {
     }
   };
 
-  /* --------------------------------
-     Update Status
-  -------------------------------- */
+  /* ==========================================
+     UPDATE STATUS
+  ========================================== */
 
   const updateStatus = async (
     status: "Approved" | "Rejected"
@@ -145,10 +160,94 @@ export default function VolunteerDetailsPage() {
       return;
     }
 
+    /* ========================================
+       APPROVAL
+    ======================================== */
+
+    if (status === "Approved") {
+      const confirmed = window.confirm(
+        "Are you sure you want to approve this volunteer profile?"
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setUpdating(true);
+      setMessage("");
+      setMessageType("");
+
+      try {
+        const { error } =
+          await supabase
+            .from("volunteers")
+            .update({
+              status: "Approved",
+            })
+            .eq("id", volunteer.id);
+
+        if (error) {
+          console.error(
+            "Approval update error:",
+            error
+          );
+
+          setMessage(
+            `Failed to approve application: ${error.message}`
+          );
+
+          setMessageType("error");
+
+          return;
+        }
+
+        setVolunteer({
+          ...volunteer,
+          status: "Approved",
+        });
+
+        setMessage(
+          "Volunteer profile approved successfully. The volunteer can now use the Volunteer Portal with their registered college email and password."
+        );
+
+        setMessageType("success");
+      } catch (error) {
+        console.error(
+          "Approval exception:",
+          error
+        );
+
+        setMessage(
+          "Something went wrong while approving the application."
+        );
+
+        setMessageType("error");
+      } finally {
+        setUpdating(false);
+      }
+
+      return;
+    }
+
+    /* ========================================
+       REJECTION
+    ======================================== */
+
+    const reason =
+      rejectionReason.trim();
+
+    if (!reason) {
+      setMessage(
+        "Please enter a rejection reason before confirming the rejection."
+      );
+
+      setMessageType("error");
+
+      return;
+    }
+
     const confirmed = window.confirm(
-      status === "Approved"
-        ? "Are you sure you want to approve this volunteer profile?"
-        : "Are you sure you want to reject this volunteer application?"
+      `Are you sure you want to reject this application?\n\nReason:\n${reason}\n\nThe volunteer account will be removed and the rejection reason will be saved in the rejection history.`
     );
 
     if (!confirmed) {
@@ -160,21 +259,34 @@ export default function VolunteerDetailsPage() {
     setMessageType("");
 
     try {
-      const { error } = await supabase
-        .from("volunteers")
-        .update({
-          status: status,
-        })
-        .eq("id", volunteer.id);
+      /* ======================================
+         CALL SUPABASE EDGE FUNCTION
+      ====================================== */
+
+      const { data, error } =
+        await supabase.functions.invoke(
+          "reject-volunteer",
+          {
+            body: {
+              volunteerId: volunteer.id,
+              rejectionReason: reason,
+            },
+          }
+        );
+
+      console.log(
+        "Reject volunteer response:",
+        data
+      );
 
       if (error) {
         console.error(
-          "Status update error:",
+          "Reject volunteer function error:",
           error
         );
 
         setMessage(
-          `Failed to update application: ${error.message}`
+          `Failed to reject application: ${error.message}`
         );
 
         setMessageType("error");
@@ -182,32 +294,59 @@ export default function VolunteerDetailsPage() {
         return;
       }
 
-      /* Update screen immediately */
+      /* ======================================
+         CHECK EDGE FUNCTION RESPONSE
+      ====================================== */
 
-      setVolunteer({
-        ...volunteer,
-        status: status,
-      });
+      if (!data?.success) {
+        console.error(
+          "Reject volunteer failed:",
+          data
+        );
 
-      if (status === "Approved") {
         setMessage(
-          "Volunteer profile approved successfully. The volunteer can now use the Volunteer Portal with their registered college email and password."
+          data?.error ||
+            "The application could not be rejected."
         );
-      } else {
-        setMessage(
-          "Volunteer application has been rejected."
-        );
+
+        setMessageType("error");
+
+        return;
       }
 
+      /* ======================================
+         SUCCESS
+      ====================================== */
+
+      setMessage(
+        "Application rejected successfully. The rejection reason has been saved and the volunteer account has been removed."
+      );
+
       setMessageType("success");
+
+      setRejectionReason("");
+      setShowRejectBox(false);
+
+      /*
+       * The volunteer has now been deleted
+       * from the volunteers table.
+       *
+       * Return to admin dashboard so the
+       * deleted application disappears.
+       */
+
+      setTimeout(() => {
+        router.replace("/admin");
+        router.refresh();
+      }, 1200);
     } catch (error) {
       console.error(
-        "Status update exception:",
+        "Rejection exception:",
         error
       );
 
       setMessage(
-        "Something went wrong while updating the application."
+        "Something went wrong while rejecting the application."
       );
 
       setMessageType("error");
@@ -216,9 +355,9 @@ export default function VolunteerDetailsPage() {
     }
   };
 
-  /* --------------------------------
-     Loading
-  -------------------------------- */
+  /* ==========================================
+     LOADING
+  ========================================== */
 
   if (loading) {
     return (
@@ -236,9 +375,9 @@ export default function VolunteerDetailsPage() {
     );
   }
 
-  /* --------------------------------
-     Not Found
-  -------------------------------- */
+  /* ==========================================
+     NOT FOUND
+  ========================================== */
 
   if (!volunteer) {
     return (
@@ -270,9 +409,9 @@ export default function VolunteerDetailsPage() {
     );
   }
 
-  /* --------------------------------
-     Status Helpers
-  -------------------------------- */
+  /* ==========================================
+     STATUS HELPERS
+  ========================================== */
 
   const currentStatus =
     volunteer.status || "Pending";
@@ -285,6 +424,10 @@ export default function VolunteerDetailsPage() {
 
   const isRejected =
     currentStatus === "Rejected";
+
+  /* ==========================================
+     PAGE
+  ========================================== */
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
@@ -317,9 +460,10 @@ export default function VolunteerDetailsPage() {
 
           </div>
 
-          {/* Status */}
+          {/* STATUS */}
 
           <div>
+
             {isApproved && (
               <span className="inline-flex items-center gap-2 rounded-full bg-green-100 px-5 py-2.5 text-sm font-bold text-green-700">
                 <CheckCircle className="h-5 w-5" />
@@ -340,6 +484,7 @@ export default function VolunteerDetailsPage() {
                 Pending Verification
               </span>
             )}
+
           </div>
 
         </div>
@@ -356,6 +501,7 @@ export default function VolunteerDetailsPage() {
                 : "border-red-200 bg-red-50 text-red-700"
             }`}
           >
+
             <div className="flex items-start gap-3">
 
               {messageType === "success" ? (
@@ -369,6 +515,7 @@ export default function VolunteerDetailsPage() {
               </p>
 
             </div>
+
           </div>
         )}
 
@@ -447,9 +594,7 @@ export default function VolunteerDetailsPage() {
 
           <Info
             label="Hall Ticket Number"
-            value={
-              volunteer.hall_ticket_number
-            }
+            value={volunteer.hall_ticket_number}
           />
 
           <Info
@@ -512,9 +657,7 @@ export default function VolunteerDetailsPage() {
 
           <Info
             label="Admission Number"
-            value={
-              volunteer.admission_number
-            }
+            value={volunteer.admission_number}
           />
 
         </InfoSection>
@@ -547,16 +690,12 @@ export default function VolunteerDetailsPage() {
 
           <Info
             label="Emergency Contact"
-            value={
-              volunteer.emergency_contact_name
-            }
+            value={volunteer.emergency_contact_name}
           />
 
           <Info
             label="Emergency Number"
-            value={
-              volunteer.emergency_contact_number
-            }
+            value={volunteer.emergency_contact_number}
           />
 
           <Info
@@ -575,10 +714,12 @@ export default function VolunteerDetailsPage() {
           />
 
           <div className="md:col-span-2">
+
             <Info
               label="Address"
               value={volunteer.address}
             />
+
           </div>
 
         </InfoSection>
@@ -596,16 +737,12 @@ export default function VolunteerDetailsPage() {
 
           <Info
             label="Languages Known"
-            value={
-              volunteer.languages_known
-            }
+            value={volunteer.languages_known}
           />
 
           <Info
             label="Previous Volunteer Experience"
-            value={
-              volunteer.previous_volunteer_experience
-            }
+            value={volunteer.previous_volunteer_experience}
           />
 
           <Info
@@ -652,9 +789,7 @@ export default function VolunteerDetailsPage() {
 
           <Info
             label="Medical Condition"
-            value={
-              volunteer.medical_condition
-            }
+            value={volunteer.medical_condition}
           />
 
           <Info
@@ -664,9 +799,7 @@ export default function VolunteerDetailsPage() {
 
           <Info
             label="Regular Medication"
-            value={
-              volunteer.regular_medication
-            }
+            value={volunteer.regular_medication}
           />
 
         </InfoSection>
@@ -707,6 +840,7 @@ export default function VolunteerDetailsPage() {
               <Clock className="mt-1 h-6 w-6 shrink-0 text-yellow-600" />
 
               <div>
+
                 <h2 className="text-xl font-bold text-[#0F2B7B]">
                   Application Decision
                 </h2>
@@ -716,13 +850,18 @@ export default function VolunteerDetailsPage() {
                   review the submitted information before
                   accepting this volunteer profile.
                 </p>
+
               </div>
 
             </div>
 
+            {/* =================================
+                DECISION BUTTONS
+            ================================= */}
+
             <div className="mt-6 flex flex-col gap-4 sm:flex-row">
 
-              {/* Approve */}
+              {/* APPROVE */}
 
               <button
                 type="button"
@@ -732,31 +871,110 @@ export default function VolunteerDetailsPage() {
                 }
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-8 py-3 font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
+
                 <CheckCircle className="h-5 w-5" />
 
                 {updating
                   ? "Processing..."
                   : "Approve Volunteer"}
+
               </button>
 
-              {/* Reject */}
+              {/* REJECT */}
 
               <button
                 type="button"
                 disabled={updating}
-                onClick={() =>
-                  updateStatus("Rejected")
-                }
+                onClick={() => {
+                  setRejectionReason("");
+                  setShowRejectBox(true);
+                  setMessage("");
+                  setMessageType("");
+                }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-8 py-3 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
+
                 <XCircle className="h-5 w-5" />
 
-                {updating
-                  ? "Processing..."
-                  : "Reject Application"}
+                Reject Application
+
               </button>
 
             </div>
+
+            {/* =================================
+                REJECTION REASON BOX
+            ================================= */}
+
+            {showRejectBox && (
+              <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
+
+                <h3 className="text-lg font-bold text-red-800">
+                  Why are you rejecting this application?
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-red-700">
+                  Enter the reason clearly. This reason
+                  will be saved in the rejection history
+                  and can be shown to the volunteer when
+                  they try to log in again.
+                </p>
+
+                <textarea
+                  value={rejectionReason}
+                  onChange={(e) =>
+                    setRejectionReason(
+                      e.target.value
+                    )
+                  }
+                  placeholder="Example: You are not currently a member of NSS. Please contact the NSS coordinator."
+                  rows={5}
+                  disabled={updating}
+                  className="mt-4 w-full rounded-xl border border-red-300 bg-white p-4 text-gray-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 disabled:bg-gray-100"
+                />
+
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+
+                  {/* CONFIRM REJECTION */}
+
+                  <button
+                    type="button"
+                    disabled={
+                      updating ||
+                      !rejectionReason.trim()
+                    }
+                    onClick={() =>
+                      updateStatus("Rejected")
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+
+                    <XCircle className="h-5 w-5" />
+
+                    {updating
+                      ? "Rejecting..."
+                      : "Confirm Rejection"}
+
+                  </button>
+
+                  {/* CANCEL */}
+
+                  <button
+                    type="button"
+                    disabled={updating}
+                    onClick={() => {
+                      setShowRejectBox(false);
+                      setRejectionReason("");
+                    }}
+                    className="rounded-xl border border-gray-300 bg-white px-6 py-3 font-semibold text-gray-700 transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+
+                </div>
+
+              </div>
+            )}
 
           </section>
         )}
@@ -773,6 +991,7 @@ export default function VolunteerDetailsPage() {
               <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-600" />
 
               <div>
+
                 <h2 className="text-xl font-bold text-green-800">
                   Volunteer Profile Approved
                 </h2>
@@ -794,6 +1013,7 @@ export default function VolunteerDetailsPage() {
                   The password remains private and is
                   never displayed to the administrator.
                 </p>
+
               </div>
 
             </div>
@@ -813,6 +1033,7 @@ export default function VolunteerDetailsPage() {
               <XCircle className="mt-1 h-6 w-6 shrink-0 text-red-600" />
 
               <div>
+
                 <h2 className="text-xl font-bold text-red-800">
                   Application Rejected
                 </h2>
@@ -821,6 +1042,7 @@ export default function VolunteerDetailsPage() {
                   This volunteer application has been
                   rejected.
                 </p>
+
               </div>
 
             </div>
@@ -828,7 +1050,9 @@ export default function VolunteerDetailsPage() {
           </section>
         )}
 
-        {/* Back Button */}
+        {/* =================================
+            BACK BUTTON
+        ================================= */}
 
         <div className="mt-8 pb-8">
 
@@ -836,8 +1060,11 @@ export default function VolunteerDetailsPage() {
             href="/admin"
             className="inline-flex items-center gap-2 rounded-xl border border-[#0F2B7B] px-6 py-3 font-semibold text-[#0F2B7B] transition hover:bg-[#0F2B7B] hover:text-white"
           >
+
             <ArrowLeft className="h-4 w-4" />
+
             Back to Admin Dashboard
+
           </Link>
 
         </div>

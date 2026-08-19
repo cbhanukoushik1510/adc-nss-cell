@@ -14,6 +14,10 @@ import {
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+/* ==========================================
+   ACTIVE VOLUNTEER
+========================================== */
+
 interface Volunteer {
   id: string;
   full_name: string | null;
@@ -27,46 +31,102 @@ interface Volunteer {
   created_at: string | null;
 }
 
-type FilterType = "All" | "Pending" | "Approved" | "Rejected";
+/* ==========================================
+   REJECTED VOLUNTEER
+========================================== */
+
+interface RejectedVolunteer {
+  id: string;
+  volunteer_id: string | null;
+
+  full_name: string | null;
+  roll_number: string | null;
+  college_email: string | null;
+
+  rejection_reason: string | null;
+
+  rejected_by: string | null;
+
+  created_at: string | null;
+
+  volunteer_data?: {
+    department?: string | null;
+    course?: string | null;
+    mobile_number?: string | null;
+    photo_url?: string | null;
+    created_at?: string | null;
+  } | null;
+}
+
+type FilterType =
+  | "All"
+  | "Pending"
+  | "Approved"
+  | "Rejected";
 
 export default function AdminPage() {
   const router = useRouter();
 
-  const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  /* ==========================================
+     STATE
+  ========================================== */
 
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<FilterType>("Pending");
+  const [volunteers, setVolunteers] =
+    useState<Volunteer[]>([]);
 
-  const [error, setError] = useState("");
-  const [loggingOut, setLoggingOut] = useState(false);
+  const [rejectedVolunteers, setRejectedVolunteers] =
+    useState<RejectedVolunteer[]>([]);
 
-  /* --------------------------------
-     Logout
-  -------------------------------- */
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [search, setSearch] =
+    useState("");
+
+  const [filter, setFilter] =
+    useState<FilterType>("Pending");
+
+  const [error, setError] =
+    useState("");
+
+  const [loggingOut, setLoggingOut] =
+    useState(false);
+
+  /* ==========================================
+     LOGOUT
+  ========================================== */
 
   const handleLogout = async () => {
     const confirmed = window.confirm(
       "Are you sure you want to logout?"
     );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     setLoggingOut(true);
     setError("");
 
-    const { error: logoutError } =
-      await supabase.auth.signOut();
+    const {
+      error: logoutError,
+    } = await supabase.auth.signOut();
 
     if (logoutError) {
-      console.error("Logout error:", logoutError);
+      console.error(
+        "Logout error:",
+        logoutError
+      );
 
       setError(
         "Unable to logout. Please try again."
       );
 
       setLoggingOut(false);
+
       return;
     }
 
@@ -74,9 +134,9 @@ export default function AdminPage() {
     router.refresh();
   };
 
-  /* --------------------------------
-     Load Volunteers
-  -------------------------------- */
+  /* ==========================================
+     LOAD VOLUNTEERS
+  ========================================== */
 
   const loadVolunteers = async (
     showRefresh = false
@@ -90,7 +150,14 @@ export default function AdminPage() {
     setError("");
 
     try {
-      const { data, error } = await supabase
+      /* ======================================
+         LOAD ACTIVE VOLUNTEERS
+      ====================================== */
+
+      const {
+        data: volunteerData,
+        error: volunteerError,
+      } = await supabase
         .from("volunteers")
         .select(
           `
@@ -110,10 +177,10 @@ export default function AdminPage() {
           ascending: false,
         });
 
-      if (error) {
+      if (volunteerError) {
         console.error(
           "Failed to load volunteers:",
-          error
+          volunteerError
         );
 
         setError(
@@ -121,10 +188,62 @@ export default function AdminPage() {
         );
 
         setVolunteers([]);
+
         return;
       }
 
-      setVolunteers(data || []);
+      /* ======================================
+         LOAD REJECTION HISTORY
+      ====================================== */
+
+      const {
+        data: rejectionData,
+        error: rejectionError,
+      } = await supabase
+        .from("volunteer_rejections")
+        .select(
+          `
+            id,
+            volunteer_id,
+            full_name,
+            roll_number,
+            college_email,
+            rejection_reason,
+            rejected_by,
+            created_at,
+            volunteer_data
+          `
+        )
+        .order("created_at", {
+          ascending: false,
+        });
+
+      if (rejectionError) {
+        console.error(
+          "Failed to load rejection history:",
+          rejectionError
+        );
+
+        /*
+         * We do NOT fail the whole dashboard.
+         *
+         * Active volunteers can still be displayed.
+         */
+
+        setRejectedVolunteers([]);
+
+        setError(
+          `Volunteer applications loaded, but rejected applications could not be loaded: ${rejectionError.message}`
+        );
+      } else {
+        setRejectedVolunteers(
+          rejectionData || []
+        );
+      }
+
+      setVolunteers(
+        volunteerData || []
+      );
     } catch (err) {
       console.error(
         "Admin volunteer loading error:",
@@ -140,78 +259,40 @@ export default function AdminPage() {
     }
   };
 
-  /* --------------------------------
-     Initial Load
-  -------------------------------- */
+  /* ==========================================
+     INITIAL LOAD
+  ========================================== */
 
   useEffect(() => {
     loadVolunteers();
   }, []);
 
-  /* --------------------------------
-     Statistics
-  -------------------------------- */
+  /* ==========================================
+     STATISTICS
+  ========================================== */
 
-  const pendingCount = volunteers.filter(
-    (volunteer) =>
-      volunteer.status === "Pending"
-  ).length;
+  const pendingCount =
+    volunteers.filter(
+      (volunteer) =>
+        volunteer.status === "Pending"
+    ).length;
 
-  const approvedCount = volunteers.filter(
-    (volunteer) =>
-      volunteer.status === "Approved"
-  ).length;
+  const approvedCount =
+    volunteers.filter(
+      (volunteer) =>
+        volunteer.status === "Approved"
+    ).length;
 
-  const rejectedCount = volunteers.filter(
-    (volunteer) =>
-      volunteer.status === "Rejected"
-  ).length;
+  const rejectedCount =
+    rejectedVolunteers.length;
 
-  /* --------------------------------
-     Search + Filter
-  -------------------------------- */
+  const totalCount =
+    volunteers.length +
+    rejectedVolunteers.length;
 
-  const filteredVolunteers = useMemo(() => {
-    const searchText = search
-      .trim()
-      .toLowerCase();
-
-    return volunteers.filter((volunteer) => {
-      const matchesFilter =
-        filter === "All" ||
-        volunteer.status === filter;
-
-      if (!matchesFilter) {
-        return false;
-      }
-
-      if (!searchText) {
-        return true;
-      }
-
-      return Boolean(
-        volunteer.full_name
-          ?.toLowerCase()
-          .includes(searchText) ||
-          volunteer.roll_number
-            ?.toLowerCase()
-            .includes(searchText) ||
-          volunteer.college_email
-            ?.toLowerCase()
-            .includes(searchText) ||
-          volunteer.department
-            ?.toLowerCase()
-            .includes(searchText) ||
-          volunteer.course
-            ?.toLowerCase()
-            .includes(searchText)
-      );
-    });
-  }, [volunteers, search, filter]);
-
-  /* --------------------------------
-     Date Formatting
-  -------------------------------- */
+  /* ==========================================
+     DATE FORMAT
+  ========================================== */
 
   const formatDate = (
     date: string | null
@@ -230,9 +311,9 @@ export default function AdminPage() {
     );
   };
 
-  /* --------------------------------
-     Status Badge
-  -------------------------------- */
+  /* ==========================================
+     STATUS BADGE
+  ========================================== */
 
   const statusBadge = (
     status: string | null
@@ -264,8 +345,125 @@ export default function AdminPage() {
     }
   };
 
+  /* ==========================================
+     FILTERED ACTIVE VOLUNTEERS
+  ========================================== */
+
+  const filteredVolunteers = useMemo(() => {
+    const searchText =
+      search.trim().toLowerCase();
+
+    /*
+     * Rejected applications are handled
+     * separately below.
+     */
+
+    if (filter === "Rejected") {
+      return [];
+    }
+
+    return volunteers.filter(
+      (volunteer) => {
+        const matchesFilter =
+          filter === "All" ||
+          volunteer.status === filter;
+
+        if (!matchesFilter) {
+          return false;
+        }
+
+        if (!searchText) {
+          return true;
+        }
+
+        return Boolean(
+          volunteer.full_name
+            ?.toLowerCase()
+            .includes(searchText) ||
+            volunteer.roll_number
+              ?.toLowerCase()
+              .includes(searchText) ||
+            volunteer.college_email
+              ?.toLowerCase()
+              .includes(searchText) ||
+            volunteer.department
+              ?.toLowerCase()
+              .includes(searchText) ||
+            volunteer.course
+              ?.toLowerCase()
+              .includes(searchText)
+        );
+      }
+    );
+  }, [
+    volunteers,
+    search,
+    filter,
+  ]);
+
+  /* ==========================================
+     FILTERED REJECTED VOLUNTEERS
+  ========================================== */
+
+  const filteredRejectedVolunteers =
+    useMemo(() => {
+      if (filter !== "Rejected") {
+        return [];
+      }
+
+      const searchText =
+        search.trim().toLowerCase();
+
+      if (!searchText) {
+        return rejectedVolunteers;
+      }
+
+      return rejectedVolunteers.filter(
+        (volunteer) => {
+          return Boolean(
+            volunteer.full_name
+              ?.toLowerCase()
+              .includes(searchText) ||
+              volunteer.roll_number
+                ?.toLowerCase()
+                .includes(searchText) ||
+              volunteer.college_email
+                ?.toLowerCase()
+                .includes(searchText) ||
+              volunteer.rejection_reason
+                ?.toLowerCase()
+                .includes(searchText) ||
+              volunteer.volunteer_data?.department
+                ?.toLowerCase()
+                .includes(searchText) ||
+              volunteer.volunteer_data?.course
+                ?.toLowerCase()
+                .includes(searchText)
+          );
+        }
+      );
+    }, [
+      rejectedVolunteers,
+      search,
+      filter,
+    ]);
+
+  /* ==========================================
+     ALL FILTERED COUNT
+  ========================================== */
+
+  const filteredCount =
+    filter === "Rejected"
+      ? filteredRejectedVolunteers.length
+      : filteredVolunteers.length;
+
+  /* ==========================================
+     PAGE
+  ========================================== */
+
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+
       <div className="mx-auto max-w-7xl">
 
         {/* =================================
@@ -275,6 +473,7 @@ export default function AdminPage() {
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
           <div>
+
             <h1 className="text-3xl font-bold text-[#0F2B7B]">
               Admin Dashboard
             </h1>
@@ -283,6 +482,7 @@ export default function AdminPage() {
               Manage NSS volunteer applications,
               verification and profile acceptance.
             </p>
+
           </div>
 
           {/* Header Buttons */}
@@ -294,9 +494,13 @@ export default function AdminPage() {
               onClick={() =>
                 loadVolunteers(true)
               }
-              disabled={refreshing || loggingOut}
+              disabled={
+                refreshing ||
+                loggingOut
+              }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white transition hover:bg-[#143a96] disabled:cursor-not-allowed disabled:opacity-60"
             >
+
               <RefreshCw
                 className={`h-5 w-5 ${
                   refreshing
@@ -308,6 +512,7 @@ export default function AdminPage() {
               {refreshing
                 ? "Refreshing..."
                 : "Refresh"}
+
             </button>
 
             <button
@@ -316,11 +521,13 @@ export default function AdminPage() {
               disabled={loggingOut}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
+
               <LogOut className="h-5 w-5" />
 
               {loggingOut
                 ? "Logging out..."
                 : "Logout"}
+
             </button>
 
           </div>
@@ -357,19 +564,22 @@ export default function AdminPage() {
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
 
-          {/* Total */}
+          {/* TOTAL */}
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
+
             <div className="flex items-center justify-between">
 
               <div>
+
                 <p className="text-sm font-medium text-gray-500">
                   Total Volunteers
                 </p>
 
                 <h2 className="mt-2 text-3xl font-bold text-[#0F2B7B]">
-                  {volunteers.length}
+                  {totalCount}
                 </h2>
+
               </div>
 
               <div className="rounded-xl bg-blue-100 p-3 text-[#0F2B7B]">
@@ -377,14 +587,17 @@ export default function AdminPage() {
               </div>
 
             </div>
+
           </div>
 
-          {/* Pending */}
+          {/* PENDING */}
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
+
             <div className="flex items-center justify-between">
 
               <div>
+
                 <p className="text-sm font-medium text-gray-500">
                   Pending
                 </p>
@@ -392,6 +605,7 @@ export default function AdminPage() {
                 <h2 className="mt-2 text-3xl font-bold text-yellow-600">
                   {pendingCount}
                 </h2>
+
               </div>
 
               <div className="rounded-xl bg-yellow-100 p-3 text-yellow-700">
@@ -399,14 +613,17 @@ export default function AdminPage() {
               </div>
 
             </div>
+
           </div>
 
-          {/* Approved */}
+          {/* APPROVED */}
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
+
             <div className="flex items-center justify-between">
 
               <div>
+
                 <p className="text-sm font-medium text-gray-500">
                   Approved
                 </p>
@@ -414,6 +631,7 @@ export default function AdminPage() {
                 <h2 className="mt-2 text-3xl font-bold text-green-600">
                   {approvedCount}
                 </h2>
+
               </div>
 
               <div className="rounded-xl bg-green-100 p-3 text-green-700">
@@ -421,14 +639,17 @@ export default function AdminPage() {
               </div>
 
             </div>
+
           </div>
 
-          {/* Rejected */}
+          {/* REJECTED */}
 
           <div className="rounded-2xl bg-white p-6 shadow-sm">
+
             <div className="flex items-center justify-between">
 
               <div>
+
                 <p className="text-sm font-medium text-gray-500">
                   Rejected
                 </p>
@@ -436,6 +657,7 @@ export default function AdminPage() {
                 <h2 className="mt-2 text-3xl font-bold text-red-600">
                   {rejectedCount}
                 </h2>
+
               </div>
 
               <div className="rounded-xl bg-red-100 p-3 text-red-700">
@@ -443,6 +665,7 @@ export default function AdminPage() {
               </div>
 
             </div>
+
           </div>
 
         </div>
@@ -453,13 +676,14 @@ export default function AdminPage() {
 
         <section className="mt-10 overflow-hidden rounded-2xl bg-white shadow-sm">
 
-          {/* Section Header */}
+          {/* SECTION HEADER */}
 
           <div className="border-b p-6">
 
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
               <div>
+
                 <h2 className="text-2xl font-bold text-[#0F2B7B]">
                   Volunteer Applications
                 </h2>
@@ -467,9 +691,10 @@ export default function AdminPage() {
                 <p className="mt-1 text-sm text-gray-500">
                   Review applications and manage volunteer profile acceptance.
                 </p>
+
               </div>
 
-              {/* Search */}
+              {/* SEARCH */}
 
               <div className="relative w-full lg:max-w-sm">
 
@@ -489,7 +714,7 @@ export default function AdminPage() {
 
             </div>
 
-            {/* Filters */}
+            {/* FILTERS */}
 
             <div className="mt-6 flex flex-wrap gap-2">
 
@@ -514,6 +739,7 @@ export default function AdminPage() {
                       : "bg-slate-100 text-gray-600 hover:bg-slate-200"
                   }`}
                 >
+
                   {item}
 
                   <span className="ml-2">
@@ -523,8 +749,9 @@ export default function AdminPage() {
                         ? approvedCount
                         : item === "Rejected"
                           ? rejectedCount
-                          : volunteers.length}
+                          : totalCount}
                   </span>
+
                 </button>
 
               ))}
@@ -538,6 +765,7 @@ export default function AdminPage() {
           ================================= */}
 
           {loading ? (
+
             <div className="p-12 text-center">
 
               <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#0F2B7B]" />
@@ -548,7 +776,7 @@ export default function AdminPage() {
 
             </div>
 
-          ) : filteredVolunteers.length === 0 ? (
+          ) : filteredCount === 0 ? (
 
             /* =================================
                EMPTY
@@ -557,7 +785,13 @@ export default function AdminPage() {
             <div className="p-12 text-center">
 
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                <Users className="h-8 w-8 text-gray-400" />
+
+                {filter === "Rejected" ? (
+                  <XCircle className="h-8 w-8 text-gray-400" />
+                ) : (
+                  <Users className="h-8 w-8 text-gray-400" />
+                )}
+
               </div>
 
               <h3 className="mt-5 text-lg font-bold text-gray-800">
@@ -565,17 +799,160 @@ export default function AdminPage() {
               </h3>
 
               <p className="mt-2 text-sm text-gray-500">
+
                 {search
                   ? "No applications match your search."
                   : `There are no ${filter.toLowerCase()} volunteer applications.`}
+
               </p>
+
+            </div>
+
+          ) : filter === "Rejected" ? (
+
+            /* =================================
+               REJECTED LIST
+            ================================= */
+
+            <div className="divide-y">
+
+              {filteredRejectedVolunteers.map(
+                (volunteer) => {
+
+                  const volunteerData =
+                    volunteer.volunteer_data;
+
+                  return (
+                    <div
+                      key={volunteer.id}
+                      className="p-6 transition hover:bg-red-50/40"
+                    >
+
+                      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+
+                        {/* =================================
+                            PROFILE
+                        ================================= */}
+
+                        <div className="flex min-w-0 flex-1 items-start gap-4">
+
+                          {volunteerData?.photo_url ? (
+                            <img
+                              src={
+                                volunteerData.photo_url
+                              }
+                              alt={
+                                volunteer.full_name ||
+                                "Volunteer"
+                              }
+                              className="h-16 w-16 shrink-0 rounded-full border object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-red-100 text-xl font-bold text-red-700">
+                              {volunteer.full_name
+                                ?.charAt(0)
+                                .toUpperCase() ||
+                                "V"}
+                            </div>
+                          )}
+
+                          <div className="min-w-0">
+
+                            <div className="flex flex-wrap items-center gap-2">
+
+                              <h3 className="font-bold text-gray-900">
+                                {volunteer.full_name ||
+                                  "Unnamed Volunteer"}
+                              </h3>
+
+                              {statusBadge(
+                                "Rejected"
+                              )}
+
+                            </div>
+
+                            <p className="mt-1 text-sm text-gray-500">
+                              Roll No:{" "}
+                              {volunteer.roll_number ||
+                                "—"}
+                            </p>
+
+                            <p className="text-sm text-gray-500">
+
+                              {volunteerData?.department ||
+                                "—"}
+
+                              {volunteerData?.course
+                                ? ` • ${volunteerData.course}`
+                                : ""}
+
+                            </p>
+
+                          </div>
+
+                        </div>
+
+                        {/* =================================
+                            CONTACT
+                        ================================= */}
+
+                        <div className="min-w-[220px] text-sm text-gray-600">
+
+                          <p className="truncate">
+                            {volunteer.college_email ||
+                              "No email"}
+                          </p>
+
+                          <p className="mt-1">
+                            {volunteerData?.mobile_number ||
+                              "No mobile"}
+                          </p>
+
+                        </div>
+
+                        {/* =================================
+                            REJECTION REASON
+                        ================================= */}
+
+                        <div className="w-full lg:max-w-md">
+
+                          <p className="text-xs font-bold uppercase tracking-wide text-red-600">
+                            Rejection Reason
+                          </p>
+
+                          <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-4">
+
+                            <p className="whitespace-pre-wrap text-sm leading-6 text-red-800">
+                              {volunteer.rejection_reason ||
+                                "No rejection reason recorded."}
+                            </p>
+
+                          </div>
+
+                          <p className="mt-2 text-xs text-gray-400">
+
+                            Rejected:{" "}
+                            {formatDate(
+                              volunteer.created_at
+                            )}
+
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                    </div>
+                  );
+                }
+              )}
 
             </div>
 
           ) : (
 
             /* =================================
-               VOLUNTEER LIST
+               ACTIVE VOLUNTEER LIST
             ================================= */
 
             <div className="divide-y">
@@ -590,13 +967,15 @@ export default function AdminPage() {
 
                     <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
 
-                      {/* Volunteer */}
+                      {/* VOLUNTEER */}
 
                       <div className="flex min-w-0 flex-1 items-center gap-4">
 
                         {volunteer.photo_url ? (
                           <img
-                            src={volunteer.photo_url}
+                            src={
+                              volunteer.photo_url
+                            }
                             alt={
                               volunteer.full_name ||
                               "Volunteer"
@@ -626,19 +1005,21 @@ export default function AdminPage() {
                           </p>
 
                           <p className="text-sm text-gray-500">
+
                             {volunteer.department ||
                               "—"}
 
                             {volunteer.course
                               ? ` • ${volunteer.course}`
                               : ""}
+
                           </p>
 
                         </div>
 
                       </div>
 
-                      {/* Contact */}
+                      {/* CONTACT */}
 
                       <div className="min-w-[220px] text-sm text-gray-600">
 
@@ -654,7 +1035,7 @@ export default function AdminPage() {
 
                       </div>
 
-                      {/* Date + Status */}
+                      {/* DATE + STATUS */}
 
                       <div className="flex min-w-[130px] flex-col gap-2">
 
@@ -663,15 +1044,18 @@ export default function AdminPage() {
                         )}
 
                         <p className="text-xs text-gray-400">
+
                           Applied:{" "}
+
                           {formatDate(
                             volunteer.created_at
                           )}
+
                         </p>
 
                       </div>
 
-                      {/* View */}
+                      {/* VIEW */}
 
                       <Link
                         href={`/admin/volunteers/${volunteer.id}`}
@@ -688,11 +1072,13 @@ export default function AdminPage() {
               )}
 
             </div>
+
           )}
 
         </section>
 
       </div>
+
     </main>
   );
 }
