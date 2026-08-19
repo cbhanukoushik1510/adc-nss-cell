@@ -4,20 +4,25 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods":
+    "POST, OPTIONS",
 };
 
 function jsonResponse(
   body: Record<string, unknown>,
   status = 200
 ) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json",
-    },
-  });
+  return new Response(
+    JSON.stringify(body),
+    {
+      status,
+      headers: {
+        ...corsHeaders,
+        "Content-Type":
+          "application/json",
+      },
+    }
+  );
 }
 
 Deno.serve(async (req) => {
@@ -36,7 +41,8 @@ Deno.serve(async (req) => {
     return jsonResponse(
       {
         success: false,
-        error: "Only POST requests are allowed.",
+        error:
+          "Only POST requests are allowed.",
       },
       405
     );
@@ -51,9 +57,14 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_URL");
 
     const serviceRoleKey =
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      Deno.env.get(
+        "SUPABASE_SERVICE_ROLE_KEY"
+      );
 
-    if (!supabaseUrl || !serviceRoleKey) {
+    if (
+      !supabaseUrl ||
+      !serviceRoleKey
+    ) {
       console.error(
         "Missing Supabase environment variables."
       );
@@ -72,16 +83,17 @@ Deno.serve(async (req) => {
        ADMIN CLIENT
     ========================================== */
 
-    const supabaseAdmin = createClient(
-      supabaseUrl,
-      serviceRoleKey,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    const supabaseAdmin =
+      createClient(
+        supabaseUrl,
+        serviceRoleKey,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      );
 
     /* ==========================================
        READ REQUEST BODY
@@ -100,58 +112,39 @@ Deno.serve(async (req) => {
       return jsonResponse(
         {
           success: false,
-          error: "Invalid request body.",
+          error:
+            "Invalid request body.",
         },
         400
       );
     }
 
-    console.log(
-      "Reject volunteer request body:",
-      body
-    );
-
-    /* ==========================================
-       GET VALUES
-    ========================================== */
-
     const volunteerId =
-      typeof body?.volunteerId === "string"
+      typeof body?.volunteerId ===
+      "string"
         ? body.volunteerId.trim()
         : "";
 
     const rejectionReason =
-      typeof body?.rejectionReason === "string"
+      typeof body?.rejectionReason ===
+      "string"
         ? body.rejectionReason.trim()
         : "";
 
-    console.log(
-      "Volunteer ID:",
-      volunteerId
-    );
-
-    console.log(
-      "Rejection reason:",
-      rejectionReason
-    );
-
     /* ==========================================
-       VALIDATE VOLUNTEER ID
+       VALIDATION
     ========================================== */
 
     if (!volunteerId) {
       return jsonResponse(
         {
           success: false,
-          error: "Volunteer ID is required.",
+          error:
+            "Volunteer ID is required.",
         },
         400
       );
     }
-
-    /* ==========================================
-       VALIDATE REJECTION REASON
-    ========================================== */
 
     if (!rejectionReason) {
       return jsonResponse(
@@ -165,17 +158,18 @@ Deno.serve(async (req) => {
     }
 
     /* ==========================================
-       1. GET VOLUNTEER
+       1. LOAD COMPLETE VOLUNTEER
     ========================================== */
 
     const {
       data: volunteer,
       error: volunteerError,
-    } = await supabaseAdmin
-      .from("volunteers")
-      .select("*")
-      .eq("id", volunteerId)
-      .maybeSingle();
+    } =
+      await supabaseAdmin
+        .from("volunteers")
+        .select("*")
+        .eq("id", volunteerId)
+        .maybeSingle();
 
     if (volunteerError) {
       console.error(
@@ -196,11 +190,6 @@ Deno.serve(async (req) => {
     }
 
     if (!volunteer) {
-      console.error(
-        "Volunteer not found:",
-        volunteerId
-      );
-
       return jsonResponse(
         {
           success: false,
@@ -212,42 +201,107 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      "Volunteer found:",
+      "Complete volunteer loaded:",
       volunteer.id
     );
 
     /* ==========================================
-       2. SAVE REJECTION HISTORY
+       2. GET ADMIN USER
+       
+       The request is coming from the logged-in
+       admin through Supabase Functions.
+       
+       We try to identify the caller so
+       rejected_by contains the admin user ID.
     ========================================== */
+
+    let rejectedBy: string | null =
+      null;
+
+    const authHeader =
+      req.headers.get(
+        "Authorization"
+      );
+
+    if (authHeader) {
+      const accessToken =
+        authHeader.replace(
+          "Bearer ",
+          ""
+        );
+
+      if (accessToken) {
+        const {
+          data: {
+            user,
+          },
+          error: userError,
+        } =
+          await supabaseAdmin.auth.getUser(
+            accessToken
+          );
+
+        if (userError) {
+          console.warn(
+            "Could not identify rejecting admin:",
+            userError.message
+          );
+        } else if (user) {
+          rejectedBy = user.id;
+        }
+      }
+    }
+
+    /* ==========================================
+       3. CREATE COMPLETE REJECTION SNAPSHOT
+    ========================================== */
+
+    /*
+     * volunteer_data contains the COMPLETE
+     * volunteer application exactly as it existed
+     * before rejection.
+     *
+     * This is what allows the admin to review
+     * the rejected application later.
+     */
+
+    const rejectionSnapshot = {
+      ...volunteer,
+    };
 
     const {
       data: rejectionRecord,
       error: rejectionInsertError,
-    } = await supabaseAdmin
-      .from("volunteer_rejections")
-      .insert({
-        volunteer_id: volunteer.id,
+    } =
+      await supabaseAdmin
+        .from("volunteer_rejections")
+        .insert({
+          volunteer_id:
+            volunteer.id,
 
-        college_email:
-          volunteer.college_email,
+          full_name:
+            volunteer.full_name,
 
-        full_name:
-          volunteer.full_name,
+          roll_number:
+            volunteer.roll_number,
 
-        roll_number:
-          volunteer.roll_number,
+          college_email:
+            volunteer.college_email,
 
-        rejection_reason:
-          rejectionReason,
+          rejection_reason:
+            rejectionReason,
 
-        rejected_by:
-          null,
+          rejected_by:
+            rejectedBy,
 
-        volunteer_data:
-          volunteer,
-      })
-      .select()
-      .single();
+          volunteer_data:
+            rejectionSnapshot,
+
+          created_at:
+            new Date().toISOString(),
+        })
+        .select()
+        .single();
 
     if (rejectionInsertError) {
       console.error(
@@ -259,7 +313,7 @@ Deno.serve(async (req) => {
         {
           success: false,
           error:
-            "Could not save the rejection reason.",
+            "Could not save the rejection history.",
           details:
             rejectionInsertError.message,
           code:
@@ -270,12 +324,12 @@ Deno.serve(async (req) => {
     }
 
     console.log(
-      "Rejection history saved:",
-      rejectionRecord
+      "Complete rejection snapshot saved:",
+      rejectionRecord.id
     );
 
     /* ==========================================
-       3. DELETE AUTH ACCOUNT
+       4. DELETE AUTH ACCOUNT
     ========================================== */
 
     if (volunteer.auth_user_id) {
@@ -298,24 +352,26 @@ Deno.serve(async (req) => {
         );
 
         /*
-         * Roll back rejection history
-         * because the complete rejection
-         * process failed.
+         * The rejection snapshot is still
+         * useful, but because the rejection
+         * operation did not finish, remove it.
          */
 
         await supabaseAdmin
-          .from("volunteer_rejections")
+          .from(
+            "volunteer_rejections"
+          )
           .delete()
           .eq(
-            "volunteer_id",
-            volunteer.id
+            "id",
+            rejectionRecord.id
           );
 
         return jsonResponse(
           {
             success: false,
             error:
-              "The volunteer account could not be removed. The application was not deleted.",
+              "The volunteer account could not be removed. The application was not rejected.",
             details:
               deleteAuthError.message,
           },
@@ -326,22 +382,22 @@ Deno.serve(async (req) => {
       console.log(
         "Auth account deleted successfully."
       );
-    } else {
-      console.log(
-        "No auth_user_id found. Skipping Auth deletion."
-      );
     }
 
     /* ==========================================
-       4. DELETE VOLUNTEER APPLICATION
+       5. DELETE ACTIVE VOLUNTEER
     ========================================== */
 
     const {
       error: deleteVolunteerError,
-    } = await supabaseAdmin
-      .from("volunteers")
-      .delete()
-      .eq("id", volunteer.id);
+    } =
+      await supabaseAdmin
+        .from("volunteers")
+        .delete()
+        .eq(
+          "id",
+          volunteer.id
+        );
 
     if (deleteVolunteerError) {
       console.error(
@@ -350,41 +406,47 @@ Deno.serve(async (req) => {
       );
 
       /*
-       * IMPORTANT:
+       * DO NOT delete the rejection record.
        *
-       * The Auth account may already have
-       * been deleted at this point.
-       *
-       * Do NOT delete the rejection history.
-       * It contains the reason and application
-       * information for administrator records.
+       * It contains the complete application
+       * snapshot and rejection reason.
        */
 
       return jsonResponse(
         {
           success: false,
           error:
-            "The Auth account was removed, but the volunteer application could not be deleted.",
+            "The volunteer account was removed, but the active volunteer record could not be deleted.",
           details:
             deleteVolunteerError.message,
+          rejectionId:
+            rejectionRecord.id,
         },
         500
       );
     }
 
     console.log(
-      "Volunteer application deleted successfully."
+      "Active volunteer deleted successfully."
     );
 
     /* ==========================================
-       5. SUCCESS
+       6. SUCCESS
     ========================================== */
 
     return jsonResponse(
       {
         success: true,
+
         message:
           "Application rejected successfully.",
+
+        rejectionId:
+          rejectionRecord.id,
+
+        volunteerId:
+          volunteer.id,
+
         rejectionReason:
           rejectionReason,
       },
@@ -399,8 +461,10 @@ Deno.serve(async (req) => {
     return jsonResponse(
       {
         success: false,
+
         error:
           "Something went wrong while rejecting the application.",
+
         details:
           error instanceof Error
             ? error.message
