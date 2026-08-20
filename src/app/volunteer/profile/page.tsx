@@ -9,9 +9,7 @@ export default function ProfilePage() {
   return (
     <DashboardLayout>
       <ProfileCard />
-      <ProfileStats />
-      <Achievements />
-      <RecentActivities />
+      
     </DashboardLayout>
   );
 }

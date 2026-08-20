@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-
+import AdminDashboardLayout from "@/components/admin/AdminDashboardLayout";
 /* ==========================================
    ACTIVE VOLUNTEER
 ========================================== */
@@ -454,9 +454,9 @@ export default function AdminPage() {
   ========================================== */
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
+     <AdminDashboardLayout>
 
-      <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-7xl">
 
         {/* =================================
             HEADER
@@ -1073,7 +1073,6 @@ export default function AdminPage() {
         </section>
 
       </div>
-
-    </main>
+</AdminDashboardLayout>
   );
 }
