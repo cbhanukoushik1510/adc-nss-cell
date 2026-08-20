@@ -63,9 +63,7 @@ export default function QuickAccess() {
               <h3 className="font-semibold text-[#0F2B7B]">
                 {item.title}
               </h3>
-
-             
-
+              
             </Link>
           );
         })}
