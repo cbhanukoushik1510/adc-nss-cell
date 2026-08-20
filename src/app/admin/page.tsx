@@ -3,71 +3,284 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  CheckCircle,
-  Clock,
-  LogOut,
-  RefreshCw,
-  Search,
   Users,
+  UserCheck,
+  Clock,
   XCircle,
+  RefreshCw,
+  ArrowRight,
+  ClipboardList,
+  CalendarDays,
+  Award,
+  Megaphone,
+  Activity,
+  CheckCircle2,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
+
 import { supabase } from "@/lib/supabase";
 import AdminDashboardLayout from "@/components/admin/AdminDashboardLayout";
-/* ==========================================
-   ACTIVE VOLUNTEER
-========================================== */
+
+/* =========================================================
+   TYPES
+========================================================= */
 
 interface Volunteer {
   id: string;
-  full_name: string | null;
+  volunteer_id: string | null;
+  full_name: string;
   roll_number: string | null;
   department: string | null;
   course: string | null;
-  college_email: string | null;
-  mobile_number: string | null;
   status: string | null;
   photo_url: string | null;
   created_at: string | null;
 }
 
-/* ==========================================
-   REJECTED VOLUNTEER
-========================================== */
-
-interface RejectedVolunteer {
+interface Rejection {
   id: string;
-  volunteer_id: string | null;
-
   full_name: string | null;
   roll_number: string | null;
-  college_email: string | null;
-
   rejection_reason: string | null;
-  rejected_by: string | null;
+  rejected_at: string | null;
   created_at: string | null;
-
-  volunteer_data?: Record<string, any> | null;
 }
 
-type FilterType =
-  | "All"
-  | "Pending"
-  | "Approved"
-  | "Rejected";
+/* =========================================================
+   HELPERS
+========================================================= */
 
-export default function AdminPage() {
-  const router = useRouter();
+const normalizeStatus = (
+  status: string | null | undefined
+) => {
+  return status?.trim().toLowerCase() || "pending";
+};
 
-  /* ==========================================
-     STATE
-  ========================================== */
+const formatDate = (
+  value: string | null
+) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const formatTime = (
+  value: string | null
+) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+/* =========================================================
+   STAT CARD
+========================================================= */
+
+function StatCard({
+  title,
+  value,
+  description,
+  icon,
+  iconClass,
+  valueClass,
+  href,
+}: {
+  title: string;
+  value: number;
+  description: string;
+  icon: React.ReactNode;
+  iconClass: string;
+  valueClass: string;
+  href?: string;
+}) {
+  const content = (
+    <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
+
+      <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-slate-50 opacity-60 blur-2xl" />
+
+      <div className="relative flex items-start justify-between">
+
+        <div>
+          <p className="text-sm font-medium text-slate-500">
+            {title}
+          </p>
+
+          <p
+            className={`mt-3 text-3xl font-bold tracking-tight ${valueClass}`}
+          >
+            {value}
+          </p>
+
+          <p className="mt-2 text-xs text-slate-500">
+            {description}
+          </p>
+        </div>
+
+        <div
+          className={`flex h-12 w-12 items-center justify-center rounded-xl ${iconClass}`}
+        >
+          {icon}
+        </div>
+      </div>
+
+      {href && (
+        <div className="relative mt-5 flex items-center gap-1 text-xs font-semibold text-[#0F2B7B]">
+          View details
+          <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" />
+        </div>
+      )}
+    </div>
+  );
+
+  if (!href) {
+    return content;
+  }
+
+  return (
+    <Link href={href}>
+      {content}
+    </Link>
+  );
+}
+
+/* =========================================================
+   QUICK ACTION
+========================================================= */
+
+function QuickAction({
+  title,
+  description,
+  icon,
+  href,
+}: {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  href: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+    >
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#0F2B7B] transition group-hover:bg-[#0F2B7B] group-hover:text-white">
+        {icon}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="font-semibold text-slate-800">
+          {title}
+        </p>
+
+        <p className="mt-1 text-xs text-slate-500">
+          {description}
+        </p>
+      </div>
+
+      <ArrowRight className="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-1 group-hover:text-[#0F2B7B]" />
+    </Link>
+  );
+}
+
+/* =========================================================
+   STATUS ROW
+========================================================= */
+
+function StatusRow({
+  label,
+  count,
+  total,
+  icon,
+  barClass,
+  iconClass,
+}: {
+  label: string;
+  count: number;
+  total: number;
+  icon: React.ReactNode;
+  barClass: string;
+  iconClass: string;
+}) {
+  const percentage =
+    total > 0
+      ? Math.round((count / total) * 100)
+      : 0;
+
+  return (
+    <div className="space-y-3">
+
+      <div className="flex items-center justify-between">
+
+        <div className="flex items-center gap-3">
+
+          <div
+            className={`flex h-9 w-9 items-center justify-center rounded-lg ${iconClass}`}
+          >
+            {icon}
+          </div>
+
+          <span className="text-sm font-semibold text-slate-700">
+            {label}
+          </span>
+
+        </div>
+
+        <div className="text-right">
+          <span className="text-sm font-bold text-slate-800">
+            {count}
+          </span>
+
+          <span className="ml-2 text-xs text-slate-400">
+            {percentage}%
+          </span>
+        </div>
+
+      </div>
+
+      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${barClass}`}
+          style={{
+            width: `${percentage}%`,
+          }}
+        />
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+export default function AdminDashboardPage() {
 
   const [volunteers, setVolunteers] =
     useState<Volunteer[]>([]);
 
-  const [rejectedVolunteers, setRejectedVolunteers] =
-    useState<RejectedVolunteer[]>([]);
+  const [rejections, setRejections] =
+    useState<Rejection[]>([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -75,65 +288,17 @@ export default function AdminPage() {
   const [refreshing, setRefreshing] =
     useState(false);
 
-  const [search, setSearch] =
-    useState("");
-
-  const [filter, setFilter] =
-    useState<FilterType>("Pending");
-
   const [error, setError] =
     useState("");
 
-  const [loggingOut, setLoggingOut] =
-    useState(false);
+  /* =======================================================
+     LOAD DASHBOARD DATA
+  ======================================================= */
 
-  /* ==========================================
-     LOGOUT
-  ========================================== */
-
-  const handleLogout = async () => {
-    const confirmed = window.confirm(
-      "Are you sure you want to logout?"
-    );
-
-    if (!confirmed) {
-      return;
-    }
-
-    setLoggingOut(true);
-    setError("");
-
-    const {
-      error: logoutError,
-    } = await supabase.auth.signOut();
-
-    if (logoutError) {
-      console.error(
-        "Logout error:",
-        logoutError
-      );
-
-      setError(
-        "Unable to logout. Please try again."
-      );
-
-      setLoggingOut(false);
-
-      return;
-    }
-
-    router.replace("/login");
-    router.refresh();
-  };
-
-  /* ==========================================
-     LOAD VOLUNTEERS
-  ========================================== */
-
-  const loadVolunteers = async (
-    showRefresh = false
+  const loadDashboard = async (
+    refresh = false
   ) => {
-    if (showRefresh) {
+    if (refresh) {
       setRefreshing(true);
     } else {
       setLoading(true);
@@ -142,359 +307,311 @@ export default function AdminPage() {
     setError("");
 
     try {
-      /* ======================================
-         LOAD ACTIVE VOLUNTEERS
-      ====================================== */
+
+      /* ================================================
+         VOLUNTEERS
+      ================================================= */
 
       const {
         data: volunteerData,
         error: volunteerError,
       } = await supabase
         .from("volunteers")
-        .select(
-          `
-            id,
-            full_name,
-            roll_number,
-            department,
-            course,
-            college_email,
-            mobile_number,
-            status,
-            photo_url,
-            created_at
-          `
-        )
+        .select(`
+          id,
+          volunteer_id,
+          full_name,
+          roll_number,
+          department,
+          course,
+          status,
+          photo_url,
+          created_at
+        `)
         .order("created_at", {
           ascending: false,
         });
 
       if (volunteerError) {
-        console.error(
-          "Failed to load volunteers:",
-          volunteerError
+        throw new Error(
+          volunteerError.message
         );
-
-        setError(
-          "Unable to load volunteer applications. Please try again."
-        );
-
-        setVolunteers([]);
-
-        return;
       }
 
-      /* ======================================
-         LOAD REJECTION HISTORY
-      ====================================== */
+      /* ================================================
+         REJECTIONS
+      ================================================= */
 
       const {
         data: rejectionData,
         error: rejectionError,
       } = await supabase
         .from("volunteer_rejections")
-        .select(
-          `
-            id,
-            volunteer_id,
-            full_name,
-            roll_number,
-            college_email,
-            rejection_reason,
-            rejected_by,
-            created_at,
-            volunteer_data
-          `
-        )
-        .order("created_at", {
+        .select(`
+          id,
+          full_name,
+          roll_number,
+          rejection_reason,
+          rejected_at,
+          created_at
+        `)
+        .order("rejected_at", {
           ascending: false,
         });
 
       if (rejectionError) {
-        console.error(
-          "Failed to load rejection history:",
-          rejectionError
-        );
-
-        /*
-         * We do NOT fail the whole dashboard.
-         *
-         * Active volunteers can still be displayed.
-         */
-
-        setRejectedVolunteers([]);
-
-        setError(
-          `Volunteer applications loaded, but rejected applications could not be loaded: ${rejectionError.message}`
-        );
-      } else {
-        setRejectedVolunteers(
-          rejectionData || []
+        throw new Error(
+          rejectionError.message
         );
       }
 
       setVolunteers(
-        volunteerData || []
+        (volunteerData ||
+          []) as Volunteer[]
       );
+
+      setRejections(
+        (rejectionData ||
+          []) as Rejection[]
+      );
+
     } catch (err) {
+
       console.error(
-        "Admin volunteer loading error:",
+        "Admin dashboard error:",
         err
       );
 
       setError(
-        "Something went wrong while loading volunteers."
+        err instanceof Error
+          ? err.message
+          : "Unable to load dashboard."
       );
+
     } finally {
+
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  /* ==========================================
+  /* =======================================================
      INITIAL LOAD
-  ========================================== */
+  ======================================================= */
 
   useEffect(() => {
-    loadVolunteers();
+    loadDashboard();
   }, []);
 
-  /* ==========================================
-     STATISTICS
-  ========================================== */
+  /* =======================================================
+     COUNTS
+  ======================================================= */
 
-  const pendingCount =
-    volunteers.filter(
-      (volunteer) =>
-        volunteer.status === "Pending"
-    ).length;
+  const counts = useMemo(() => {
 
-  const approvedCount =
-    volunteers.filter(
-      (volunteer) =>
-        volunteer.status === "Approved"
-    ).length;
+    let pending = 0;
+    let approved = 0;
 
-  const rejectedCount =
-    rejectedVolunteers.length;
-
-  const totalCount =
-    volunteers.length +
-    rejectedVolunteers.length;
-
-  /* ==========================================
-     DATE FORMAT
-  ========================================== */
-
-  const formatDate = (
-    date: string | null
-  ) => {
-    if (!date) {
-      return "—";
-    }
-
-    return new Date(date).toLocaleDateString(
-      "en-IN",
-      {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }
-    );
-  };
-
-  /* ==========================================
-     STATUS BADGE
-  ========================================== */
-
-  const statusBadge = (
-    status: string | null
-  ) => {
-    switch (status) {
-      case "Approved":
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1.5 text-xs font-bold text-green-700">
-            <CheckCircle className="h-3.5 w-3.5" />
-            Approved
-          </span>
-        );
-
-      case "Rejected":
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-3 py-1.5 text-xs font-bold text-red-700">
-            <XCircle className="h-3.5 w-3.5" />
-            Rejected
-          </span>
-        );
-
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-3 py-1.5 text-xs font-bold text-yellow-700">
-            <Clock className="h-3.5 w-3.5" />
-            Pending
-          </span>
-        );
-    }
-  };
-
-  /* ==========================================
-     FILTERED ACTIVE VOLUNTEERS
-  ========================================== */
-
-  const filteredVolunteers = useMemo(() => {
-    const searchText =
-      search.trim().toLowerCase();
-
-    /*
-     * Rejected applications are handled
-     * separately below.
-     */
-
-    if (filter === "Rejected") {
-      return [];
-    }
-
-    return volunteers.filter(
+    volunteers.forEach(
       (volunteer) => {
-        const matchesFilter =
-          filter === "All" ||
-          volunteer.status === filter;
 
-        if (!matchesFilter) {
-          return false;
+        const status =
+          normalizeStatus(
+            volunteer.status
+          );
+
+        if (status === "approved") {
+          approved++;
+        } else if (
+          status !== "rejected"
+        ) {
+          pending++;
         }
-
-        if (!searchText) {
-          return true;
-        }
-
-        return Boolean(
-          volunteer.full_name
-            ?.toLowerCase()
-            .includes(searchText) ||
-            volunteer.roll_number
-              ?.toLowerCase()
-              .includes(searchText) ||
-            volunteer.college_email
-              ?.toLowerCase()
-              .includes(searchText) ||
-            volunteer.department
-              ?.toLowerCase()
-              .includes(searchText) ||
-            volunteer.course
-              ?.toLowerCase()
-              .includes(searchText)
-        );
       }
     );
+
+    return {
+      total:
+        volunteers.length +
+        rejections.length,
+
+      active:
+        volunteers.length,
+
+      pending,
+
+      approved,
+
+      rejected:
+        rejections.length,
+    };
+
   }, [
     volunteers,
-    search,
-    filter,
+    rejections,
   ]);
 
-  /* ==========================================
-     FILTERED REJECTED VOLUNTEERS
-  ========================================== */
+  /* =======================================================
+     RECENT APPLICATIONS
+  ======================================================= */
 
-  const filteredRejectedVolunteers =
+  const recentApplications =
     useMemo(() => {
-      if (filter !== "Rejected") {
-        return [];
-      }
 
-      const searchText =
-        search.trim().toLowerCase();
-
-      if (!searchText) {
-        return rejectedVolunteers;
-      }
-
-      return rejectedVolunteers.filter(
-        (volunteer) => {
-          return Boolean(
-            volunteer.full_name
-              ?.toLowerCase()
-              .includes(searchText) ||
-              volunteer.roll_number
-                ?.toLowerCase()
-                .includes(searchText) ||
-              volunteer.college_email
-                ?.toLowerCase()
-                .includes(searchText) ||
-              volunteer.rejection_reason
-                ?.toLowerCase()
-                .includes(searchText) ||
-              volunteer.volunteer_data?.department
-                ?.toLowerCase()
-                .includes(searchText) ||
-              volunteer.volunteer_data?.course
-                ?.toLowerCase()
-                .includes(searchText)
-          );
-        }
+      const active = volunteers.map(
+        (volunteer) => ({
+          id: volunteer.id,
+          name:
+            volunteer.full_name ||
+            "Unnamed Volunteer",
+          roll:
+            volunteer.roll_number ||
+            "—",
+          department:
+            volunteer.department ||
+            "Department not specified",
+          status:
+            normalizeStatus(
+              volunteer.status
+            ),
+          date:
+            volunteer.created_at,
+          photo:
+            volunteer.photo_url,
+          rejected: false,
+        })
       );
+
+      const rejected =
+        rejections.map(
+          (rejection) => ({
+            id:
+              `rejected-${rejection.id}`,
+            name:
+              rejection.full_name ||
+              "Unnamed Volunteer",
+            roll:
+              rejection.roll_number ||
+              "—",
+            department:
+              "Application Rejected",
+            status: "rejected",
+            date:
+              rejection.rejected_at ||
+              rejection.created_at,
+            photo: null,
+            rejected: true,
+          })
+        );
+
+      return [
+        ...active,
+        ...rejected,
+      ]
+        .sort((a, b) => {
+          const aTime =
+            new Date(
+              a.date || 0
+            ).getTime();
+
+          const bTime =
+            new Date(
+              b.date || 0
+            ).getTime();
+
+          return bTime - aTime;
+        })
+        .slice(0, 6);
+
     }, [
-      rejectedVolunteers,
-      search,
-      filter,
+      volunteers,
+      rejections,
     ]);
 
-  /* ==========================================
-     ALL FILTERED COUNT
-  ========================================== */
+  /* =======================================================
+     STATUS BADGE
+  ======================================================= */
 
-  const filteredCount =
-    filter === "Rejected"
-      ? filteredRejectedVolunteers.length
-      : filteredVolunteers.length;
+  const statusBadge = (
+    status: string
+  ) => {
 
-  /* ==========================================
+    if (status === "approved") {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          Approved
+        </span>
+      );
+    }
+
+    if (status === "rejected") {
+      return (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-700">
+          <XCircle className="h-3.5 w-3.5" />
+          Rejected
+        </span>
+      );
+    }
+
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-bold text-yellow-700">
+        <Clock className="h-3.5 w-3.5" />
+        Pending
+      </span>
+    );
+  };
+
+  /* =======================================================
      PAGE
-  ========================================== */
+  ======================================================= */
 
   return (
-     <AdminDashboardLayout>
+    <AdminDashboardLayout>
 
-    <div className="mx-auto max-w-7xl">
+      <div className="mx-auto w-full max-w-7xl space-y-7">
 
-        {/* =================================
+        {/* =================================================
             HEADER
-        ================================= */}
+        ================================================= */}
 
-        <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <section className="relative overflow-hidden rounded-3xl bg-[#0F2B7B] px-6 py-7 text-white shadow-lg sm:px-8">
 
-          <div>
+          <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
 
-            <h1 className="text-3xl font-bold text-[#0F2B7B]">
-              Admin Dashboard
-            </h1>
+          <div className="absolute -bottom-32 right-32 h-64 w-64 rounded-full bg-blue-400/10 blur-3xl" />
 
-            <p className="mt-2 text-gray-600">
-              Manage NSS volunteer applications,
-              verification and profile acceptance.
-            </p>
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
 
-          </div>
+            <div>
 
-          {/* Header Buttons */}
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5 text-xs font-semibold text-blue-100">
+                <Activity className="h-3.5 w-3.5" />
+                NSS Administration
+              </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
+              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+                Admin Dashboard
+              </h1>
+
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-100 sm:text-base">
+                Monitor volunteer applications,
+                approved volunteers, events and
+                NSS activities from one place.
+              </p>
+
+            </div>
 
             <button
               type="button"
               onClick={() =>
-                loadVolunteers(true)
+                loadDashboard(true)
               }
-              disabled={
-                refreshing ||
-                loggingOut
-              }
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white transition hover:bg-[#143a96] disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={refreshing}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-[#0F2B7B] shadow-sm transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-
               <RefreshCw
-                className={`h-5 w-5 ${
+                className={`h-4 w-4 ${
                   refreshing
                     ? "animate-spin"
                     : ""
@@ -503,576 +620,530 @@ export default function AdminPage() {
 
               {refreshing
                 ? "Refreshing..."
-                : "Refresh"}
-
-            </button>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-5 py-3 font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-
-              <LogOut className="h-5 w-5" />
-
-              {loggingOut
-                ? "Logging out..."
-                : "Logout"}
-
+                : "Refresh Dashboard"}
             </button>
 
           </div>
 
-        </div>
+        </section>
 
-        {/* =================================
+        {/* =================================================
             ERROR
-        ================================= */}
+        ================================================= */}
 
         {error && (
-          <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700">
+          <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5 text-red-700">
 
-            <p className="font-semibold">
-              {error}
-            </p>
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
-            <button
-              type="button"
-              onClick={() =>
-                loadVolunteers(true)
-              }
-              className="mt-3 font-semibold underline"
-            >
-              Try again
-            </button>
+            <div className="flex-1">
 
+              <p className="font-bold">
+                Dashboard data could not be loaded.
+              </p>
+
+              <p className="mt-1 text-sm">
+                {error}
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  loadDashboard(true)
+                }
+                className="mt-3 text-sm font-bold underline"
+              >
+                Try again
+              </button>
+
+            </div>
           </div>
         )}
 
-        {/* =================================
-            STATISTICS
-        ================================= */}
+        {/* =================================================
+            MAIN STATS
+        ================================================= */}
 
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {loading ? (
 
-          {/* TOTAL */}
+          <div className="flex items-center justify-center rounded-2xl border border-slate-200 bg-white p-16 shadow-sm">
 
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-
-                <p className="text-sm font-medium text-gray-500">
-                  Total Volunteers
-                </p>
-
-                <h2 className="mt-2 text-3xl font-bold text-[#0F2B7B]">
-                  {totalCount}
-                </h2>
-
-              </div>
-
-              <div className="rounded-xl bg-blue-100 p-3 text-[#0F2B7B]">
-                <Users className="h-6 w-6" />
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* PENDING */}
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-
-                <p className="text-sm font-medium text-gray-500">
-                  Pending
-                </p>
-
-                <h2 className="mt-2 text-3xl font-bold text-yellow-600">
-                  {pendingCount}
-                </h2>
-
-              </div>
-
-              <div className="rounded-xl bg-yellow-100 p-3 text-yellow-700">
-                <Clock className="h-6 w-6" />
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* APPROVED */}
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-
-                <p className="text-sm font-medium text-gray-500">
-                  Approved
-                </p>
-
-                <h2 className="mt-2 text-3xl font-bold text-green-600">
-                  {approvedCount}
-                </h2>
-
-              </div>
-
-              <div className="rounded-xl bg-green-100 p-3 text-green-700">
-                <CheckCircle className="h-6 w-6" />
-              </div>
-
-            </div>
-
-          </div>
-
-          {/* REJECTED */}
-
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-
-                <p className="text-sm font-medium text-gray-500">
-                  Rejected
-                </p>
-
-                <h2 className="mt-2 text-3xl font-bold text-red-600">
-                  {rejectedCount}
-                </h2>
-
-              </div>
-
-              <div className="rounded-xl bg-red-100 p-3 text-red-700">
-                <XCircle className="h-6 w-6" />
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* =================================
-            VOLUNTEERS SECTION
-        ================================= */}
-
-        <section className="mt-10 overflow-hidden rounded-2xl bg-white shadow-sm">
-
-          {/* SECTION HEADER */}
-
-          <div className="border-b p-6">
-
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-
-              <div>
-
-                <h2 className="text-2xl font-bold text-[#0F2B7B]">
-                  Volunteer Applications
-                </h2>
-
-                <p className="mt-1 text-sm text-gray-500">
-                  Review applications and manage volunteer profile acceptance.
-                </p>
-
-              </div>
-
-              {/* SEARCH */}
-
-              <div className="relative w-full lg:max-w-sm">
-
-                <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
-
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) =>
-                    setSearch(e.target.value)
-                  }
-                  placeholder="Search volunteers..."
-                  className="w-full rounded-xl border border-gray-300 py-3 pl-11 pr-4 outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
-                />
-
-              </div>
-
-            </div>
-
-            {/* FILTERS */}
-
-            <div className="mt-6 flex flex-wrap gap-2">
-
-              {(
-                [
-                  "All",
-                  "Pending",
-                  "Approved",
-                  "Rejected",
-                ] as FilterType[]
-              ).map((item) => (
-
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() =>
-                    setFilter(item)
-                  }
-                  className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                    filter === item
-                      ? "bg-[#0F2B7B] text-white"
-                      : "bg-slate-100 text-gray-600 hover:bg-slate-200"
-                  }`}
-                >
-
-                  {item}
-
-                  <span className="ml-2">
-                    {item === "Pending"
-                      ? pendingCount
-                      : item === "Approved"
-                        ? approvedCount
-                        : item === "Rejected"
-                          ? rejectedCount
-                          : totalCount}
-                  </span>
-
-                </button>
-
-              ))}
-
-            </div>
-
-          </div>
-
-          {/* =================================
-              LOADING
-          ================================= */}
-
-          {loading ? (
-
-            <div className="p-12 text-center">
+            <div className="text-center">
 
               <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#0F2B7B]" />
 
-              <p className="mt-4 text-gray-500">
-                Loading volunteer applications...
+              <p className="mt-4 text-sm text-slate-500">
+                Loading dashboard...
               </p>
 
             </div>
 
-          ) : filteredCount === 0 ? (
+          </div>
 
-            /* =================================
-               EMPTY
-            ================================= */
+        ) : (
 
-            <div className="p-12 text-center">
+          <>
 
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-                {filter === "Rejected" ? (
-                  <XCircle className="h-8 w-8 text-gray-400" />
-                ) : (
-                  <Users className="h-8 w-8 text-gray-400" />
-                )}
+              <StatCard
+                title="Total Applications"
+                value={counts.total}
+                description="All submitted applications"
+                icon={
+                  <Users className="h-6 w-6" />
+                }
+                iconClass="bg-blue-50 text-[#0F2B7B]"
+                valueClass="text-[#0F2B7B]"
+                href="/admin/volunteers"
+              />
+
+              <StatCard
+                title="Pending Applications"
+                value={counts.pending}
+                description="Waiting for admin review"
+                icon={
+                  <Clock className="h-6 w-6" />
+                }
+                iconClass="bg-yellow-50 text-yellow-700"
+                valueClass="text-yellow-600"
+                href="/admin/volunteers"
+              />
+
+              <StatCard
+                title="Approved Volunteers"
+                value={counts.approved}
+                description="Currently approved"
+                icon={
+                  <UserCheck className="h-6 w-6" />
+                }
+                iconClass="bg-green-50 text-green-700"
+                valueClass="text-green-600"
+                href="/admin/volunteers"
+              />
+
+              <StatCard
+                title="Rejected Applications"
+                value={counts.rejected}
+                description="Applications rejected"
+                icon={
+                  <XCircle className="h-6 w-6" />
+                }
+                iconClass="bg-red-50 text-red-700"
+                valueClass="text-red-600"
+                href="/admin/volunteers"
+              />
+
+            </div>
+
+            {/* =================================================
+                SECOND ROW
+            ================================================= */}
+
+            <div className="grid gap-6 xl:grid-cols-3">
+
+              {/* ===============================================
+                  APPLICATION OVERVIEW
+              =============================================== */}
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm xl:col-span-2">
+
+                <div className="flex items-start justify-between">
+
+                  <div>
+
+                    <div className="flex items-center gap-2">
+
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0F2B7B]">
+                        <TrendingUp className="h-5 w-5" />
+                      </div>
+
+                      <h2 className="text-lg font-bold text-slate-800">
+                        Application Overview
+                      </h2>
+
+                    </div>
+
+                    <p className="mt-2 text-sm text-slate-500">
+                      Current application distribution.
+                    </p>
+
+                  </div>
+
+                  <Link
+                    href="/admin/volunteers"
+                    className="hidden items-center gap-1 text-sm font-semibold text-[#0F2B7B] hover:underline sm:flex"
+                  >
+                    View all
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+
+                </div>
+
+                <div className="mt-7 space-y-6">
+
+                  <StatusRow
+                    label="Approved"
+                    count={counts.approved}
+                    total={counts.total}
+                    icon={
+                      <CheckCircle2 className="h-4 w-4" />
+                    }
+                    iconClass="bg-green-50 text-green-700"
+                    barClass="bg-green-500"
+                  />
+
+                  <StatusRow
+                    label="Pending"
+                    count={counts.pending}
+                    total={counts.total}
+                    icon={
+                      <Clock className="h-4 w-4" />
+                    }
+                    iconClass="bg-yellow-50 text-yellow-700"
+                    barClass="bg-yellow-500"
+                  />
+
+                  <StatusRow
+                    label="Rejected"
+                    count={counts.rejected}
+                    total={counts.total}
+                    icon={
+                      <XCircle className="h-4 w-4" />
+                    }
+                    iconClass="bg-red-50 text-red-700"
+                    barClass="bg-red-500"
+                  />
+
+                </div>
+
+              </section>
+
+              {/* ===============================================
+                  QUICK ACTIONS
+              =============================================== */}
+
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+
+                <div>
+
+                  <div className="flex items-center gap-2">
+
+                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-[#0F2B7B]">
+                      <ClipboardList className="h-5 w-5" />
+                    </div>
+
+                    <h2 className="text-lg font-bold text-slate-800">
+                      Quick Actions
+                    </h2>
+
+                  </div>
+
+                  <p className="mt-2 text-sm text-slate-500">
+                    Quickly access common admin tasks.
+                  </p>
+
+                </div>
+
+                <div className="mt-5 space-y-3">
+
+                  <QuickAction
+                    title="Review Applications"
+                    description="Review pending and rejected applications"
+                    icon={
+                      <ClipboardList className="h-5 w-5" />
+                    }
+                    href="/admin/volunteers"
+                  />
+
+                  <QuickAction
+                    title="Manage Volunteers"
+                    description="View approved volunteer profiles"
+                    icon={
+                      <Users className="h-5 w-5" />
+                    }
+                    href="/admin/volunteers"
+                  />
+
+                  <QuickAction
+                    title="Manage Events"
+                    description="Create and manage NSS events"
+                    icon={
+                      <CalendarDays className="h-5 w-5" />
+                    }
+                    href="/admin/events"
+                  />
+
+                  <QuickAction
+                    title="Certificates"
+                    description="Manage volunteer certificates"
+                    icon={
+                      <Award className="h-5 w-5" />
+                    }
+                    href="/admin/certificates"
+                  />
+
+                </div>
+
+              </section>
+
+            </div>
+
+            {/* =================================================
+                RECENT APPLICATIONS
+            ================================================= */}
+
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+
+              <div className="flex flex-col gap-3 border-b border-slate-200 p-6 sm:flex-row sm:items-center sm:justify-between">
+
+                <div>
+
+                  <h2 className="text-lg font-bold text-slate-800">
+                    Recent Applications
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Latest volunteer application activity.
+                  </p>
+
+                </div>
+
+                <Link
+                  href="/admin/volunteers"
+                  className="inline-flex items-center gap-1 text-sm font-semibold text-[#0F2B7B] hover:underline"
+                >
+                  View all applications
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
 
               </div>
 
-              <h3 className="mt-5 text-lg font-bold text-gray-800">
-                No volunteers found
-              </h3>
+              {recentApplications.length === 0 ? (
 
-              <p className="mt-2 text-sm text-gray-500">
+                <div className="p-12 text-center">
 
-                {search
-                  ? "No applications match your search."
-                  : `There are no ${filter.toLowerCase()} volunteer applications.`}
+                  <Users className="mx-auto h-10 w-10 text-slate-300" />
 
-              </p>
+                  <p className="mt-3 font-semibold text-slate-700">
+                    No applications yet
+                  </p>
 
-            </div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    New volunteer applications will appear here.
+                  </p>
 
-          ) : filter === "Rejected" ? (
+                </div>
 
-            /* =================================
-               REJECTED LIST
-            ================================= */
+              ) : (
 
-            <div className="divide-y">
+                <div className="divide-y divide-slate-100">
 
-              {filteredRejectedVolunteers.map(
-                (volunteer) => {
+                  {recentApplications.map(
+                    (application) => (
 
-                  const volunteerData =
-                    volunteer.volunteer_data;
+                      <div
+                        key={application.id}
+                        className="flex flex-col gap-4 p-5 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
+                      >
 
-                  return (
-                    <div
-                      key={volunteer.id}
-                      className="p-6 transition hover:bg-red-50/40"
-                    >
+                        <div className="flex min-w-0 items-center gap-4">
 
-                      <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+                          {application.photo ? (
 
-                        {/* =================================
-                            PROFILE
-                        ================================= */}
-
-                        <div className="flex min-w-0 flex-1 items-start gap-4">
-
-                          {volunteerData?.photo_url ? (
                             <img
                               src={
-                                volunteerData.photo_url
+                                application.photo
                               }
                               alt={
-                                volunteer.full_name ||
-                                "Volunteer"
+                                application.name
                               }
-                              className="h-16 w-16 shrink-0 rounded-full border object-cover"
+                              className="h-12 w-12 shrink-0 rounded-xl border border-slate-200 object-cover"
                             />
+
                           ) : (
-                            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-red-100 text-xl font-bold text-red-700">
-                              {volunteer.full_name
-                                ?.charAt(0)
-                                .toUpperCase() ||
-                                "V"}
+
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 font-bold text-[#0F2B7B]">
+                              {application.name
+                                .charAt(0)
+                                .toUpperCase()}
                             </div>
+
                           )}
 
                           <div className="min-w-0">
 
                             <div className="flex flex-wrap items-center gap-2">
 
-                              <h3 className="font-bold text-gray-900">
-                                {volunteer.full_name ||
-                                  "Unnamed Volunteer"}
-                              </h3>
+                              <p className="truncate font-bold text-slate-800">
+                                {application.name}
+                              </p>
 
                               {statusBadge(
-                                "Rejected"
+                                application.status
                               )}
 
                             </div>
 
-                            <p className="mt-1 text-sm text-gray-500">
+                            <p className="mt-1 text-xs text-slate-500">
                               Roll No:{" "}
-                              {volunteer.roll_number ||
-                                "—"}
-                            </p>
-
-                            <p className="text-sm text-gray-500">
-
-                              {volunteerData?.department ||
-                                "—"}
-
-                              {volunteerData?.course
-                                ? ` • ${volunteerData.course}`
-                                : ""}
-
+                              {application.roll}
+                              {" • "}
+                              {application.department}
                             </p>
 
                           </div>
 
                         </div>
 
-                        {/* =================================
-                            CONTACT
-                        ================================= */}
+                        <div className="flex items-center justify-between gap-5 sm:justify-end">
 
-                        <div className="min-w-[220px] text-sm text-gray-600">
+                          <div className="text-right">
 
-                          <p className="truncate">
-                            {volunteer.college_email ||
-                              "No email"}
-                          </p>
+                            <p className="text-xs text-slate-400">
+                              {formatDate(
+                                application.date
+                              )}
+                            </p>
 
-                          <p className="mt-1">
-                            {volunteerData?.mobile_number ||
-                              "No mobile"}
-                          </p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              {formatTime(
+                                application.date
+                              )}
+                            </p>
 
-                        </div>
-
-                        {/* =================================
-    REJECTION REASON
-================================= */}
-
-<div className="w-full lg:max-w-md">
-
-  <p className="text-xs font-bold uppercase tracking-wide text-red-600">
-    Rejection Reason
-  </p>
-
-  <div className="mt-2 rounded-xl border border-red-200 bg-red-50 p-4">
-
-    <p className="whitespace-pre-wrap text-sm leading-6 text-red-800">
-      {volunteer.rejection_reason ||
-        "No rejection reason recorded."}
-    </p>
-
-  </div>
-
-  <p className="mt-2 text-xs text-gray-400">
-    Rejected:{" "}
-    {formatDate(volunteer.created_at)}
-  </p>
-
-  <Link
-    href={`/admin/rejected-applications/${volunteer.id}`}
-    className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white transition hover:bg-[#143a96]"
-  >
-    View Full Application
-  </Link>
-
-</div>
-
-                      </div>
-
-                    </div>
-                  );
-                }
-              )}
-
-            </div>
-
-          ) : (
-
-            /* =================================
-               ACTIVE VOLUNTEER LIST
-            ================================= */
-
-            <div className="divide-y">
-
-              {filteredVolunteers.map(
-                (volunteer) => (
-
-                  <div
-                    key={volunteer.id}
-                    className="p-6 transition hover:bg-slate-50"
-                  >
-
-                    <div className="flex flex-col gap-6 lg:flex-row lg:items-center">
-
-                      {/* VOLUNTEER */}
-
-                      <div className="flex min-w-0 flex-1 items-center gap-4">
-
-                        {volunteer.photo_url ? (
-                          <img
-                            src={
-                              volunteer.photo_url
-                            }
-                            alt={
-                              volunteer.full_name ||
-                              "Volunteer"
-                            }
-                            className="h-16 w-16 shrink-0 rounded-full border object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xl font-bold text-[#0F2B7B]">
-                            {volunteer.full_name
-                              ?.charAt(0)
-                              .toUpperCase() ||
-                              "V"}
                           </div>
-                        )}
 
-                        <div className="min-w-0">
-
-                          <h3 className="truncate font-bold text-gray-900">
-                            {volunteer.full_name ||
-                              "Unnamed Volunteer"}
-                          </h3>
-
-                          <p className="mt-1 text-sm text-gray-500">
-                            Roll No:{" "}
-                            {volunteer.roll_number ||
-                              "—"}
-                          </p>
-
-                          <p className="text-sm text-gray-500">
-
-                            {volunteer.department ||
-                              "—"}
-
-                            {volunteer.course
-                              ? ` • ${volunteer.course}`
-                              : ""}
-
-                          </p>
+                          <Link
+                            href={
+                              application.rejected
+                                ? `/admin/volunteers`
+                                : `/admin/volunteers/${application.id}`
+                            }
+                            className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 transition hover:bg-[#0F2B7B] hover:text-white"
+                          >
+                            View
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
 
                         </div>
 
                       </div>
 
-                      {/* CONTACT */}
+                    )
+                  )}
 
-                      <div className="min-w-[220px] text-sm text-gray-600">
+                </div>
 
-                        <p className="truncate">
-                          {volunteer.college_email ||
-                            "No email"}
-                        </p>
-
-                        <p className="mt-1">
-                          {volunteer.mobile_number ||
-                            "No mobile"}
-                        </p>
-
-                      </div>
-
-                      {/* DATE + STATUS */}
-
-                      <div className="flex min-w-[130px] flex-col gap-2">
-
-                        {statusBadge(
-                          volunteer.status
-                        )}
-
-                        <p className="text-xs text-gray-400">
-
-                          Applied:{" "}
-
-                          {formatDate(
-                            volunteer.created_at
-                          )}
-
-                        </p>
-
-                      </div>
-
-                      {/* VIEW */}
-
-                      <Link
-                        href={`/admin/volunteers/${volunteer.id}`}
-                        className="rounded-xl bg-[#0F2B7B] px-5 py-3 text-center font-semibold text-white transition hover:bg-[#143a96]"
-                      >
-                        Review Application
-                      </Link>
-
-                    </div>
-
-                  </div>
-
-                )
               )}
 
-            </div>
+            </section>
 
-          )}
+            {/* =================================================
+                ADMIN MODULES
+            ================================================= */}
 
-        </section>
+            <section>
+
+              <div className="mb-4">
+
+                <h2 className="text-lg font-bold text-slate-800">
+                  Administration
+                </h2>
+
+                <p className="mt-1 text-sm text-slate-500">
+                  Manage the different parts of the NSS portal.
+                </p>
+
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+                <Link
+                  href="/admin/events"
+                  className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+
+                  <CalendarDays className="h-6 w-6 text-[#0F2B7B]" />
+
+                  <h3 className="mt-4 font-bold text-slate-800">
+                    Events
+                  </h3>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Manage NSS events and schedules.
+                  </p>
+
+                  <ArrowRight className="mt-4 h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-[#0F2B7B]" />
+
+                </Link>
+
+                <Link
+                  href="/admin/attendance"
+                  className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+
+                  <ClipboardList className="h-6 w-6 text-[#0F2B7B]" />
+
+                  <h3 className="mt-4 font-bold text-slate-800">
+                    Attendance
+                  </h3>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Track volunteer attendance.
+                  </p>
+
+                  <ArrowRight className="mt-4 h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-[#0F2B7B]" />
+
+                </Link>
+
+                <Link
+                  href="/admin/certificates"
+                  className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+
+                  <Award className="h-6 w-6 text-[#0F2B7B]" />
+
+                  <h3 className="mt-4 font-bold text-slate-800">
+                    Certificates
+                  </h3>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Manage NSS certificates.
+                  </p>
+
+                  <ArrowRight className="mt-4 h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-[#0F2B7B]" />
+
+                </Link>
+
+                <Link
+                  href="/admin/announcements"
+                  className="group rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+
+                  <Megaphone className="h-6 w-6 text-[#0F2B7B]" />
+
+                  <h3 className="mt-4 font-bold text-slate-800">
+                    Announcements
+                  </h3>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Publish NSS announcements.
+                  </p>
+
+                  <ArrowRight className="mt-4 h-4 w-4 text-slate-400 transition group-hover:translate-x-1 group-hover:text-[#0F2B7B]" />
+
+                </Link>
+
+              </div>
+
+            </section>
+
+          </>
+        )}
 
       </div>
-</AdminDashboardLayout>
+
+    </AdminDashboardLayout>
   );
 }

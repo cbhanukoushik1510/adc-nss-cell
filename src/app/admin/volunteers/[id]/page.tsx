@@ -47,6 +47,7 @@ interface Volunteer {
   state: string | null;
   pincode: string | null;
 
+  nss_unit: string | null;
   skills: string | null;
   languages_known: string | null;
   previous_volunteer_experience: string | null;
@@ -63,7 +64,190 @@ interface Volunteer {
   declaration_accepted: boolean | null;
 
   photo_url: string | null;
+
   status: string | null;
+  role: string | null;
+
+  service_hours: number | null;
+  attendance_percentage: number | null;
+  certificates_count: number | null;
+
+  verification_status: string | null;
+
+  volunteer_id: string | null;
+
+  created_at: string | null;
+  updated_at: string | null;
+
+  approved_at: string | null;
+  approved_by: string | null;
+}
+
+/* =========================================================
+   NSS ID GENERATOR
+   =========================================================
+
+   Supported roll numbers:
+
+   1051-23-861-010
+   105123861010
+
+   After removing "-", both become:
+
+   105123861010
+
+   Position:
+   1 0 5 1 2 3 8 6 1 0 1 0
+           ----
+            23
+
+   Year = characters 5-6 = 23
+   Last 3 digits = 010
+
+   Example:
+
+   ADC-NSS-23-BSC-010
+========================================================= */
+
+function generateNssId(
+  rollNumber: string | null,
+  department: string | null
+): string {
+  if (!rollNumber) {
+    throw new Error(
+      "Roll number is missing. Cannot generate NSS ID."
+    );
+  }
+
+  /* -----------------------------------------------
+     Remove spaces and hyphens
+
+     1051-23-861-010
+     becomes
+     105123861010
+  ------------------------------------------------ */
+
+  const normalizedRollNumber = rollNumber
+    .replace(/[\s-]/g, "")
+    .trim();
+
+  /* -----------------------------------------------
+     Validate numeric roll number
+  ------------------------------------------------ */
+
+  if (!/^\d+$/.test(normalizedRollNumber)) {
+    throw new Error(
+      `Invalid roll number "${rollNumber}". Roll number must contain only numbers and hyphens.`
+    );
+  }
+
+  /* -----------------------------------------------
+     Minimum length
+
+     We need:
+
+     characters 5-6 = year
+     last 3 = roll suffix
+  ------------------------------------------------ */
+
+  if (normalizedRollNumber.length < 7) {
+    throw new Error(
+      `Roll number "${rollNumber}" is too short to generate an NSS ID.`
+    );
+  }
+
+  /* -----------------------------------------------
+     GET NSS YEAR
+
+     IMPORTANT:
+
+     Do NOT use volunteer.year.
+
+     The NSS year comes from the roll number.
+
+     105123861010
+       ^^
+       positions 5-6
+
+     JavaScript:
+     substring(4, 6)
+  ------------------------------------------------ */
+
+  const nssYear = normalizedRollNumber.substring(
+    4,
+    6
+  );
+
+  /* -----------------------------------------------
+     Validate extracted year
+
+     Expected examples:
+     23
+     24
+     25
+     26
+  ------------------------------------------------ */
+
+  if (!/^\d{2}$/.test(nssYear)) {
+    throw new Error(
+      `Unable to determine the NSS year from roll number "${rollNumber}".`
+    );
+  }
+
+  /* -----------------------------------------------
+     GET LAST 3 DIGITS
+
+     105123861010
+
+     last 3 = 010
+  ------------------------------------------------ */
+
+  const rollSuffix =
+    normalizedRollNumber.slice(-3);
+
+  /* -----------------------------------------------
+     DEPARTMENT CODE
+
+     Examples:
+
+     BBA
+     BCA
+     BCOM
+     BSC
+
+     We remove spaces, dots and hyphens.
+
+     B.Sc -> BSC
+     BCA -> BCA
+     BBA -> BBA
+     B.Com -> BCOM
+  ------------------------------------------------ */
+
+  if (!department?.trim()) {
+    throw new Error(
+      "Department is missing. Cannot generate NSS ID."
+    );
+  }
+
+  const departmentCode = department
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .toUpperCase();
+
+  if (!departmentCode) {
+    throw new Error(
+      "Invalid department. Cannot generate NSS ID."
+    );
+  }
+
+  /* -----------------------------------------------
+     FINAL NSS ID
+
+     Example:
+
+     ADC-NSS-23-BSC-010
+  ------------------------------------------------ */
+
+  return `ADC-NSS-${nssYear}-${departmentCode}-${rollSuffix}`;
 }
 
 export default function VolunteerDetailsPage() {
@@ -71,8 +255,6 @@ export default function VolunteerDetailsPage() {
   const router = useRouter();
 
   const id = params.id as string;
-
-console.log("Admin volunteer page ID:", id);
 
   const [volunteer, setVolunteer] =
     useState<Volunteer | null>(null);
@@ -95,9 +277,9 @@ console.log("Admin volunteer page ID:", id);
   const [messageType, setMessageType] =
     useState<"success" | "error" | "">("");
 
-  /* ==========================================
+  /* =========================================================
      LOAD VOLUNTEER
-  ========================================== */
+  ========================================================= */
 
   useEffect(() => {
     if (id) {
@@ -134,7 +316,7 @@ console.log("Admin volunteer page ID:", id);
         return;
       }
 
-      setVolunteer(data);
+      setVolunteer(data as Volunteer);
     } catch (error) {
       console.error(
         "Volunteer loading error:",
@@ -151,89 +333,156 @@ console.log("Admin volunteer page ID:", id);
     }
   };
 
-  /* ==========================================
-     UPDATE STATUS
-  ========================================== */
+  /* =========================================================
+     APPROVE VOLUNTEER
+  ========================================================= */
 
-  const updateStatus = async (
-    status: "Approved" | "Rejected"
-  ) => {
+  const approveVolunteer = async () => {
     if (!volunteer || updating) {
       return;
     }
 
-    /* ========================================
-       APPROVAL
-    ======================================== */
+    /* -------------------------------------------------------
+       Don't approve twice
+    ------------------------------------------------------- */
 
-    if (status === "Approved") {
-      const confirmed = window.confirm(
-        "Are you sure you want to approve this volunteer profile?"
+    if (volunteer.status === "Approved") {
+      setMessage(
+        "This volunteer is already approved."
       );
 
-      if (!confirmed) {
-        return;
-      }
-
-      setUpdating(true);
-      setMessage("");
-      setMessageType("");
-
-      try {
-        const { error } =
-          await supabase
-            .from("volunteers")
-            .update({
-              status: "Approved",
-            })
-            .eq("id", volunteer.id);
-
-        if (error) {
-          console.error(
-            "Approval update error:",
-            error
-          );
-
-          setMessage(
-            `Failed to approve application: ${error.message}`
-          );
-
-          setMessageType("error");
-
-          return;
-        }
-
-        setVolunteer({
-          ...volunteer,
-          status: "Approved",
-        });
-
-        setMessage(
-          "Volunteer profile approved successfully. The volunteer can now use the Volunteer Portal with their registered college email and password."
-        );
-
-        setMessageType("success");
-      } catch (error) {
-        console.error(
-          "Approval exception:",
-          error
-        );
-
-        setMessage(
-          "Something went wrong while approving the application."
-        );
-
-        setMessageType("error");
-      } finally {
-        setUpdating(false);
-      }
+      setMessageType("error");
 
       return;
     }
 
-    /* ========================================
-       REJECTION
-    ======================================== */
+    /* -------------------------------------------------------
+       Generate NSS ID
+
+       IMPORTANT:
+
+       This uses roll_number.
+
+       It DOES NOT use volunteer.year.
+    ------------------------------------------------------- */
+
+    let generatedNssId = "";
+
+    try {
+      generatedNssId = generateNssId(
+        volunteer.roll_number,
+        volunteer.department
+      );
+    } catch (error) {
+      console.error(
+        "NSS ID generation error:",
+        error
+      );
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Unable to generate NSS ID."
+      );
+
+      setMessageType("error");
+
+      return;
+    }
+
+    /* -------------------------------------------------------
+       Show the admin exactly what will be assigned
+    ------------------------------------------------------- */
+
+    const confirmed = window.confirm(
+      `Approve this volunteer?\n\nNSS ID that will be assigned:\n${generatedNssId}`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setUpdating(true);
+    setMessage("");
+    setMessageType("");
+
+    try {
+      /* =====================================================
+         SAVE APPROVAL + NSS ID
+      ===================================================== */
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from("volunteers")
+        .update({
+          status: "Approved",
+
+          /*
+           * FINAL NSS ID
+           *
+           * Example:
+           * ADC-NSS-23-BSC-010
+           */
+          volunteer_id: generatedNssId,
+
+          approved_at: new Date().toISOString(),
+        })
+        .eq("id", volunteer.id)
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error(
+          "Approval update error:",
+          error
+        );
+
+        setMessage(
+          `Failed to approve application: ${error.message}`
+        );
+
+        setMessageType("error");
+
+        return;
+      }
+
+      /* -----------------------------------------------------
+         Update local volunteer state
+      ----------------------------------------------------- */
+
+      setVolunteer(data as Volunteer);
+
+      setMessage(
+        `Volunteer approved successfully. NSS ID assigned: ${generatedNssId}`
+      );
+
+      setMessageType("success");
+    } catch (error) {
+      console.error(
+        "Approval exception:",
+        error
+      );
+
+      setMessage(
+        "Something went wrong while approving the application."
+      );
+
+      setMessageType("error");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  /* =========================================================
+     REJECT VOLUNTEER
+  ========================================================= */
+
+  const rejectVolunteer = async () => {
+    if (!volunteer || updating) {
+      return;
+    }
 
     const reason =
       rejectionReason.trim();
@@ -249,7 +498,7 @@ console.log("Admin volunteer page ID:", id);
     }
 
     const confirmed = window.confirm(
-      `Are you sure you want to reject this application?\n\nReason:\n${reason}\n\nThe volunteer account will be removed and the rejection reason will be saved in the rejection history.`
+      `Are you sure you want to reject this application?\n\nReason:\n${reason}`
     );
 
     if (!confirmed) {
@@ -261,10 +510,6 @@ console.log("Admin volunteer page ID:", id);
     setMessageType("");
 
     try {
-      /* ======================================
-         CALL SUPABASE EDGE FUNCTION
-      ====================================== */
-
       const { data, error } =
         await supabase.functions.invoke(
           "reject-volunteer",
@@ -296,16 +541,7 @@ console.log("Admin volunteer page ID:", id);
         return;
       }
 
-      /* ======================================
-         CHECK EDGE FUNCTION RESPONSE
-      ====================================== */
-
       if (!data?.success) {
-        console.error(
-          "Reject volunteer failed:",
-          data
-        );
-
         setMessage(
           data?.error ||
             "The application could not be rejected."
@@ -316,12 +552,8 @@ console.log("Admin volunteer page ID:", id);
         return;
       }
 
-      /* ======================================
-         SUCCESS
-      ====================================== */
-
       setMessage(
-        "Application rejected successfully. The rejection reason has been saved and the volunteer account has been removed."
+        "Application rejected successfully."
       );
 
       setMessageType("success");
@@ -329,16 +561,8 @@ console.log("Admin volunteer page ID:", id);
       setRejectionReason("");
       setShowRejectBox(false);
 
-      /*
-       * The volunteer has now been deleted
-       * from the volunteers table.
-       *
-       * Return to admin dashboard so the
-       * deleted application disappears.
-       */
-
       setTimeout(() => {
-        router.replace("/admin");
+        router.replace("/admin/volunteers");
         router.refresh();
       }, 1200);
     } catch (error) {
@@ -357,35 +581,32 @@ console.log("Admin volunteer page ID:", id);
     }
   };
 
-  /* ==========================================
+  /* =========================================================
      LOADING
-  ========================================== */
+  ========================================================= */
 
   if (loading) {
     return (
       <main className="min-h-screen bg-slate-100 p-6 md:p-10">
         <div className="mx-auto max-w-6xl rounded-2xl bg-white p-10 text-center shadow">
-
           <RefreshCw className="mx-auto h-8 w-8 animate-spin text-[#0F2B7B]" />
 
           <p className="mt-4 text-gray-600">
             Loading volunteer application...
           </p>
-
         </div>
       </main>
     );
   }
 
-  /* ==========================================
+  /* =========================================================
      NOT FOUND
-  ========================================== */
+  ========================================================= */
 
   if (!volunteer) {
     return (
       <main className="min-h-screen bg-slate-100 p-6 md:p-10">
         <div className="mx-auto max-w-6xl rounded-2xl bg-white p-10 text-center shadow">
-
           <XCircle className="mx-auto h-12 w-12 text-red-500" />
 
           <h1 className="mt-4 text-xl font-bold text-red-600">
@@ -399,21 +620,20 @@ console.log("Admin volunteer page ID:", id);
           )}
 
           <Link
-            href="/admin"
+            href="/admin/volunteers"
             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 font-semibold text-white hover:bg-[#143a96]"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Admin
+            Back to Volunteers
           </Link>
-
         </div>
       </main>
     );
   }
 
-  /* ==========================================
-     STATUS HELPERS
-  ========================================== */
+  /* =========================================================
+     STATUS
+  ========================================================= */
 
   const currentStatus =
     volunteer.status || "Pending";
@@ -427,29 +647,27 @@ console.log("Admin volunteer page ID:", id);
   const isRejected =
     currentStatus === "Rejected";
 
-  /* ==========================================
+  /* =========================================================
      PAGE
-  ========================================== */
+  ========================================================= */
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
-
       <div className="mx-auto max-w-6xl">
 
-        {/* =================================
+        {/* =================================================
             HEADER
-        ================================= */}
+        ================================================= */}
 
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
 
           <div>
-
             <Link
-              href="/admin"
+              href="/admin/volunteers"
               className="inline-flex items-center gap-2 text-sm font-semibold text-[#0F2B7B] hover:underline"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back to Admin
+              Back to Volunteers
             </Link>
 
             <h1 className="mt-3 text-3xl font-bold text-[#0F2B7B]">
@@ -459,13 +677,9 @@ console.log("Admin volunteer page ID:", id);
             <p className="mt-1 text-gray-500">
               Review the complete volunteer profile before making a decision.
             </p>
-
           </div>
 
-          {/* STATUS */}
-
           <div>
-
             {isApproved && (
               <span className="inline-flex items-center gap-2 rounded-full bg-green-100 px-5 py-2.5 text-sm font-bold text-green-700">
                 <CheckCircle className="h-5 w-5" />
@@ -486,14 +700,12 @@ console.log("Admin volunteer page ID:", id);
                 Pending Verification
               </span>
             )}
-
           </div>
-
         </div>
 
-        {/* =================================
+        {/* =================================================
             MESSAGE
-        ================================= */}
+        ================================================= */}
 
         {message && (
           <div
@@ -503,9 +715,7 @@ console.log("Admin volunteer page ID:", id);
                 : "border-red-200 bg-red-50 text-red-700"
             }`}
           >
-
             <div className="flex items-start gap-3">
-
               {messageType === "success" ? (
                 <CheckCircle className="mt-0.5 h-5 w-5 shrink-0" />
               ) : (
@@ -515,18 +725,15 @@ console.log("Admin volunteer page ID:", id);
               <p className="font-semibold">
                 {message}
               </p>
-
             </div>
-
           </div>
         )}
 
-        {/* =================================
+        {/* =================================================
             PROFILE HEADER
-        ================================= */}
+        ================================================= */}
 
         <section className="rounded-2xl bg-white p-6 shadow-sm">
-
           <div className="flex flex-col gap-6 md:flex-row md:items-center">
 
             {volunteer.photo_url ? (
@@ -547,7 +754,6 @@ console.log("Admin volunteer page ID:", id);
             )}
 
             <div className="flex-1">
-
               <h2 className="text-2xl font-bold text-gray-900">
                 {volunteer.full_name ||
                   "Unnamed Volunteer"}
@@ -572,18 +778,30 @@ console.log("Admin volunteer page ID:", id);
                   "—"}
               </p>
 
+              {/* -------------------------------------------
+                  NSS ID
+
+                  Pending:
+                  Not Assigned
+
+                  Approved:
+                  Actual generated NSS ID
+              ------------------------------------------- */}
+
+              <p className="mt-2 text-sm font-semibold text-[#0F2B7B]">
+                NSS ID:{" "}
+                {volunteer.volunteer_id ||
+                  "Not Assigned"}
+              </p>
             </div>
-
           </div>
-
         </section>
 
-        {/* =================================
+        {/* =================================================
             PERSONAL INFORMATION
-        ================================= */}
+        ================================================= */}
 
         <InfoSection title="Personal Information">
-
           <Info
             label="Full Name"
             value={volunteer.full_name}
@@ -613,15 +831,13 @@ console.log("Admin volunteer page ID:", id);
             label="Blood Group"
             value={volunteer.blood_group}
           />
-
         </InfoSection>
 
-        {/* =================================
+        {/* =================================================
             ACADEMIC INFORMATION
-        ================================= */}
+        ================================================= */}
 
         <InfoSection title="Academic Information">
-
           <Info
             label="Department"
             value={volunteer.department}
@@ -661,15 +877,13 @@ console.log("Admin volunteer page ID:", id);
             label="Admission Number"
             value={volunteer.admission_number}
           />
-
         </InfoSection>
 
-        {/* =================================
+        {/* =================================================
             CONTACT INFORMATION
-        ================================= */}
+        ================================================= */}
 
         <InfoSection title="Contact Information">
-
           <Info
             label="College Email"
             value={volunteer.college_email}
@@ -716,21 +930,32 @@ console.log("Admin volunteer page ID:", id);
           />
 
           <div className="md:col-span-2">
-
             <Info
               label="Address"
               value={volunteer.address}
             />
-
           </div>
-
         </InfoSection>
 
-        {/* =================================
+        {/* =================================================
             NSS INFORMATION
-        ================================= */}
+        ================================================= */}
 
         <InfoSection title="NSS Information">
+          <Info
+            label="NSS ID"
+            value={volunteer.volunteer_id}
+          />
+
+          <Info
+            label="NSS Unit"
+            value={volunteer.nss_unit}
+          />
+
+          <Info
+            label="Role"
+            value={volunteer.role}
+          />
 
           <Info
             label="Skills"
@@ -744,7 +969,9 @@ console.log("Admin volunteer page ID:", id);
 
           <Info
             label="Previous Volunteer Experience"
-            value={volunteer.previous_volunteer_experience}
+            value={
+              volunteer.previous_volunteer_experience
+            }
           />
 
           <Info
@@ -765,15 +992,13 @@ console.log("Admin volunteer page ID:", id);
               ) || null
             }
           />
-
         </InfoSection>
 
-        {/* =================================
+        {/* =================================================
             MEDICAL INFORMATION
-        ================================= */}
+        ================================================= */}
 
         <InfoSection title="Medical Information">
-
           <Info
             label="Blood Group"
             value={volunteer.blood_group}
@@ -803,15 +1028,13 @@ console.log("Admin volunteer page ID:", id);
             label="Regular Medication"
             value={volunteer.regular_medication}
           />
-
         </InfoSection>
 
-        {/* =================================
+        {/* =================================================
             DECLARATION
-        ================================= */}
+        ================================================= */}
 
         <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
-
           <h2 className="mb-5 text-xl font-bold text-[#0F2B7B]">
             Declaration
           </h2>
@@ -827,62 +1050,76 @@ console.log("Admin volunteer page ID:", id);
               ? "✓ Declaration accepted by volunteer"
               : "✕ Declaration not accepted"}
           </div>
-
         </section>
 
-        {/* =================================
+        {/* =================================================
             APPLICATION DECISION
-        ================================= */}
+        ================================================= */}
 
         {isPending && (
           <section className="mt-6 rounded-2xl border border-yellow-200 bg-white p-6 shadow-sm">
 
             <div className="flex items-start gap-3">
-
               <Clock className="mt-1 h-6 w-6 shrink-0 text-yellow-600" />
 
               <div>
-
                 <h2 className="text-xl font-bold text-[#0F2B7B]">
                   Application Decision
                 </h2>
 
                 <p className="mt-2 text-gray-600">
-                  Complete the background verification and
-                  review the submitted information before
-                  accepting this volunteer profile.
+                  Review the submitted information before
+                  approving or rejecting this volunteer.
                 </p>
-
               </div>
-
             </div>
 
-            {/* =================================
-                DECISION BUTTONS
-            ================================= */}
+            {/* ---------------------------------------------
+                NSS ID PREVIEW
+            --------------------------------------------- */}
+
+            <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-5">
+              <p className="text-sm font-semibold text-blue-700">
+                NSS ID that will be generated on approval
+              </p>
+
+              <p className="mt-2 text-2xl font-bold tracking-wide text-[#0F2B7B]">
+                {(() => {
+                  try {
+                    return generateNssId(
+                      volunteer.roll_number,
+                      volunteer.department
+                    );
+                  } catch {
+                    return "Unable to generate NSS ID";
+                  }
+                })()}
+              </p>
+
+              <p className="mt-2 text-xs text-blue-700">
+                The NSS ID will be saved to the database
+                only after the application is approved.
+              </p>
+            </div>
+
+            {/* ---------------------------------------------
+                BUTTONS
+            --------------------------------------------- */}
 
             <div className="mt-6 flex flex-col gap-4 sm:flex-row">
-
-              {/* APPROVE */}
 
               <button
                 type="button"
                 disabled={updating}
-                onClick={() =>
-                  updateStatus("Approved")
-                }
+                onClick={approveVolunteer}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 px-8 py-3 font-bold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-
                 <CheckCircle className="h-5 w-5" />
 
                 {updating
                   ? "Processing..."
                   : "Approve Volunteer"}
-
               </button>
-
-              {/* REJECT */}
 
               <button
                 type="button"
@@ -895,18 +1132,15 @@ console.log("Admin volunteer page ID:", id);
                 }}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-8 py-3 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-
                 <XCircle className="h-5 w-5" />
 
                 Reject Application
-
               </button>
-
             </div>
 
-            {/* =================================
-                REJECTION REASON BOX
-            ================================= */}
+            {/* ---------------------------------------------
+                REJECTION BOX
+            --------------------------------------------- */}
 
             {showRejectBox && (
               <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5">
@@ -916,10 +1150,7 @@ console.log("Admin volunteer page ID:", id);
                 </h3>
 
                 <p className="mt-2 text-sm leading-6 text-red-700">
-                  Enter the reason clearly. This reason
-                  will be saved in the rejection history
-                  and can be shown to the volunteer when
-                  they try to log in again.
+                  Enter the rejection reason clearly.
                 </p>
 
                 <textarea
@@ -929,7 +1160,7 @@ console.log("Admin volunteer page ID:", id);
                       e.target.value
                     )
                   }
-                  placeholder="Example: You are not currently a member of NSS. Please contact the NSS coordinator."
+                  placeholder="Enter rejection reason..."
                   rows={5}
                   disabled={updating}
                   className="mt-4 w-full rounded-xl border border-red-300 bg-white p-4 text-gray-900 outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 disabled:bg-gray-100"
@@ -937,29 +1168,21 @@ console.log("Admin volunteer page ID:", id);
 
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
 
-                  {/* CONFIRM REJECTION */}
-
                   <button
                     type="button"
                     disabled={
                       updating ||
                       !rejectionReason.trim()
                     }
-                    onClick={() =>
-                      updateStatus("Rejected")
-                    }
+                    onClick={rejectVolunteer}
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-6 py-3 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-
                     <XCircle className="h-5 w-5" />
 
                     {updating
                       ? "Rejecting..."
                       : "Confirm Rejection"}
-
                   </button>
-
-                  {/* CANCEL */}
 
                   <button
                     type="button"
@@ -972,38 +1195,43 @@ console.log("Admin volunteer page ID:", id);
                   >
                     Cancel
                   </button>
-
                 </div>
-
               </div>
             )}
-
           </section>
         )}
 
-        {/* =================================
-            APPROVED MESSAGE
-        ================================= */}
+        {/* =================================================
+            APPROVED
+        ================================================= */}
 
         {isApproved && (
           <section className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-6">
 
             <div className="flex items-start gap-3">
-
               <CheckCircle className="mt-1 h-6 w-6 shrink-0 text-green-600" />
 
               <div>
-
                 <h2 className="text-xl font-bold text-green-800">
                   Volunteer Profile Approved
                 </h2>
 
-                <p className="mt-2 leading-7 text-green-700">
-                  This volunteer has been approved and
-                  their profile is now accepted.
+                <p className="mt-2 text-green-700">
+                  This volunteer has been approved.
                 </p>
 
-                <p className="mt-2 text-sm text-green-700">
+                <div className="mt-4 rounded-xl bg-white p-4">
+                  <p className="text-sm text-gray-500">
+                    NSS ID
+                  </p>
+
+                  <p className="mt-1 text-2xl font-bold tracking-wide text-[#0F2B7B]">
+                    {volunteer.volunteer_id ||
+                      "Not Assigned"}
+                  </p>
+                </div>
+
+                <p className="mt-4 text-sm text-green-700">
                   Login email:{" "}
                   <strong>
                     {volunteer.college_email ||
@@ -1015,27 +1243,22 @@ console.log("Admin volunteer page ID:", id);
                   The password remains private and is
                   never displayed to the administrator.
                 </p>
-
               </div>
-
             </div>
-
           </section>
         )}
 
-        {/* =================================
-            REJECTED MESSAGE
-        ================================= */}
+        {/* =================================================
+            REJECTED
+        ================================================= */}
 
         {isRejected && (
           <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-6">
 
             <div className="flex items-start gap-3">
-
               <XCircle className="mt-1 h-6 w-6 shrink-0 text-red-600" />
 
               <div>
-
                 <h2 className="text-xl font-bold text-red-800">
                   Application Rejected
                 </h2>
@@ -1044,42 +1267,33 @@ console.log("Admin volunteer page ID:", id);
                   This volunteer application has been
                   rejected.
                 </p>
-
               </div>
-
             </div>
-
           </section>
         )}
 
-        {/* =================================
-            BACK BUTTON
-        ================================= */}
+        {/* =================================================
+            BACK
+        ================================================= */}
 
         <div className="mt-8 pb-8">
-
           <Link
-            href="/admin"
+            href="/admin/volunteers"
             className="inline-flex items-center gap-2 rounded-xl border border-[#0F2B7B] px-6 py-3 font-semibold text-[#0F2B7B] transition hover:bg-[#0F2B7B] hover:text-white"
           >
-
             <ArrowLeft className="h-4 w-4" />
 
-            Back to Admin Dashboard
-
+            Back to Volunteers
           </Link>
-
         </div>
-
       </div>
-
     </main>
   );
 }
 
-/* =================================
+/* =========================================================
    INFO SECTION
-================================= */
+========================================================= */
 
 function InfoSection({
   title,
@@ -1090,7 +1304,6 @@ function InfoSection({
 }) {
   return (
     <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
-
       <h2 className="mb-5 text-xl font-bold text-[#0F2B7B]">
         {title}
       </h2>
@@ -1098,14 +1311,13 @@ function InfoSection({
       <div className="grid gap-5 md:grid-cols-2">
         {children}
       </div>
-
     </section>
   );
 }
 
-/* =================================
+/* =========================================================
    INFO
-================================= */
+========================================================= */
 
 function Info({
   label,
@@ -1116,7 +1328,6 @@ function Info({
 }) {
   return (
     <div>
-
       <p className="text-sm font-medium text-gray-500">
         {label}
       </p>
@@ -1124,7 +1335,6 @@ function Info({
       <p className="mt-1 whitespace-pre-wrap font-semibold text-gray-900">
         {value || "—"}
       </p>
-
     </div>
   );
 }
