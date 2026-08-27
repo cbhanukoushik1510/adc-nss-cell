@@ -66,7 +66,8 @@ export default function AdminAttendancePage() {
 
   const [copied, setCopied] = useState(false);
 
-  const qrCanvasRef = useRef<HTMLDivElement | null>(null);
+  const qrCanvasRef =
+    useRef<HTMLDivElement | null>(null);
 
   const [form, setForm] = useState<EventForm>({
     title: "",
@@ -87,6 +88,21 @@ export default function AdminAttendancePage() {
     }
 
     return `${window.location.origin}/attendance/${qrToken}`;
+  };
+
+  // =========================================================
+  // RESET FORM
+  // =========================================================
+
+  const resetForm = () => {
+    setForm({
+      title: "",
+      description: "",
+      event_date: "",
+      start_time: "",
+      end_time: "",
+      venue: "",
+    });
   };
 
   // =========================================================
@@ -133,7 +149,9 @@ export default function AdminAttendancePage() {
         throw eventsError;
       }
 
-      setEvents((data || []) as unknown as AttendanceEvent[]);
+      setEvents(
+        (data || []) as unknown as AttendanceEvent[]
+      );
     } catch (err) {
       console.error(
         "Attendance events loading error:",
@@ -178,7 +196,9 @@ export default function AdminAttendancePage() {
       form.end_time &&
       form.end_time < form.start_time
     ) {
-      setError("End time cannot be before start time.");
+      setError(
+        "End time cannot be before start time."
+      );
       return;
     }
 
@@ -238,26 +258,16 @@ export default function AdminAttendancePage() {
         "Attendance event created successfully."
       );
 
-      setForm({
-        title: "",
-        description: "",
-        event_date: "",
-        start_time: "",
-        end_time: "",
-        venue: "",
-      });
-
+      resetForm();
       setShowCreate(false);
 
-      // FIX:
-      // createdEvent can be typed by Supabase as a generic Event.
-      // We first check that it exists, then safely treat the selected
-      // row as our AttendanceEvent shape.
       if (createdEvent) {
         const attendanceEvent =
           createdEvent as unknown as AttendanceEvent;
 
         setSelectedEvent(attendanceEvent);
+
+        // Show QR automatically after creation.
         setShowQR(true);
       }
 
@@ -326,7 +336,9 @@ export default function AdminAttendancePage() {
       form.end_time &&
       form.end_time < form.start_time
     ) {
-      setError("End time cannot be before start time.");
+      setError(
+        "End time cannot be before start time."
+      );
       return;
     }
 
@@ -362,14 +374,7 @@ export default function AdminAttendancePage() {
       setShowCreate(false);
       setSelectedEvent(null);
 
-      setForm({
-        title: "",
-        description: "",
-        event_date: "",
-        start_time: "",
-        end_time: "",
-        venue: "",
-      });
+      resetForm();
 
       await loadEvents(true);
     } catch (err) {
@@ -532,6 +537,149 @@ export default function AdminAttendancePage() {
   };
 
   // =========================================================
+  // OPEN QR IMAGE
+  // =========================================================
+
+  const openQRCodeImage = (
+    event: AttendanceEvent
+  ) => {
+    setError("");
+    setSuccess("");
+
+    const canvas =
+      document.createElement("canvas");
+
+    const qrSize = 800;
+
+    canvas.width = qrSize;
+    canvas.height = qrSize;
+
+    const ctx =
+      canvas.getContext("2d");
+
+    if (!ctx) {
+      setError(
+        "Unable to create QR image."
+      );
+      return;
+    }
+
+    ctx.fillStyle = "#ffffff";
+
+    ctx.fillRect(
+      0,
+      0,
+      qrSize,
+      qrSize
+    );
+
+    const existingCanvas =
+      qrCanvasRef.current?.querySelector(
+        "canvas"
+      );
+
+    if (existingCanvas) {
+      ctx.drawImage(
+        existingCanvas,
+        0,
+        0,
+        qrSize,
+        qrSize
+      );
+
+      const imageUrl =
+        canvas.toDataURL(
+          "image/png"
+        );
+
+      const newWindow =
+        window.open("", "_blank");
+
+      if (!newWindow) {
+        setError(
+          "Please allow pop-ups to open the QR image."
+        );
+        return;
+      }
+
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>${escapeHtml(
+              event.title
+            )} - QR Code</title>
+
+            <meta
+              name="viewport"
+              content="width=device-width, initial-scale=1"
+            />
+
+            <style>
+              * {
+                box-sizing: border-box;
+              }
+
+              body {
+                margin: 0;
+                min-height: 100vh;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 30px;
+                background: #f8fafc;
+                font-family: Arial, sans-serif;
+              }
+
+              .wrapper {
+                text-align: center;
+              }
+
+              img {
+                display: block;
+                width: min(800px, 90vw);
+                height: auto;
+                background: white;
+                padding: 20px;
+                border-radius: 20px;
+                box-shadow:
+                  0 20px 50px rgba(0,0,0,.15);
+              }
+
+              h1 {
+                margin: 0 0 20px;
+                color: #0F2B7B;
+                font-size: 28px;
+              }
+            </style>
+          </head>
+
+          <body>
+            <div class="wrapper">
+              <h1>${escapeHtml(
+                event.title
+              )}</h1>
+
+              <img
+                src="${imageUrl}"
+                alt="Attendance QR Code"
+              />
+            </div>
+          </body>
+        </html>
+      `);
+
+      newWindow.document.close();
+
+      return;
+    }
+
+    setError(
+      "Please click Show QR first, then try Open QR."
+    );
+  };
+
+  // =========================================================
   // COPY ATTENDANCE LINK
   // =========================================================
 
@@ -543,7 +691,9 @@ export default function AdminAttendancePage() {
     );
 
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(
+        url
+      );
 
       setCopied(true);
 
@@ -605,6 +755,7 @@ export default function AdminAttendancePage() {
 
     // Background
     ctx.fillStyle = "#ffffff";
+
     ctx.fillRect(
       0,
       0,
@@ -614,6 +765,7 @@ export default function AdminAttendancePage() {
 
     // Header
     ctx.fillStyle = "#0F2B7B";
+
     ctx.fillRect(
       0,
       0,
@@ -771,22 +923,51 @@ export default function AdminAttendancePage() {
   };
 
   // =========================================================
-  // OPEN ATTENDANCE PAGE
+  // OPEN ADMIN ATTENDANCE RECORDS
+  //
+  // IMPORTANT:
+  // This uses event.id.
+  //
+  // It does NOT use qr_token.
+  //
+  // qr_token = volunteer scanning page
+  // event.id = admin attendance records page
   // =========================================================
 
   const openAttendancePageForEvent = (
     event: AttendanceEvent
   ) => {
-    const url = getAttendanceUrl(
-      event.qr_token
+    setError("");
+
+    const eventId =
+      event.id?.trim();
+
+    if (!eventId) {
+      setError(
+        "Unable to open attendance records because this event has no ID."
+      );
+      return;
+    }
+
+    const url =
+      `/admin/attendance/${encodeURIComponent(
+        eventId
+      )}`;
+
+    console.log(
+      "Opening admin attendance records:",
+      {
+        eventId,
+        url,
+      }
     );
 
-    window.open(
-      url,
-      "_blank",
-      "noopener,noreferrer"
-    );
+    window.location.href = url;
   };
+
+  // =========================================================
+  // OPEN ADMIN ATTENDANCE FROM QR MODAL
+  // =========================================================
 
   const openAttendancePage = () => {
     if (!selectedEvent) return;
@@ -800,8 +981,8 @@ export default function AdminAttendancePage() {
   // FILTER
   // =========================================================
 
-  const filteredEvents = events.filter(
-    (event) => {
+  const filteredEvents =
+    events.filter((event) => {
       const text = search
         .trim()
         .toLowerCase();
@@ -818,8 +999,7 @@ export default function AdminAttendancePage() {
         .join(" ")
         .toLowerCase()
         .includes(text);
-    }
-  );
+    });
 
   // =========================================================
   // DATE
@@ -875,7 +1055,9 @@ export default function AdminAttendancePage() {
     <AdminDashboardLayout>
       <div className="mx-auto w-full max-w-7xl space-y-6">
 
-        {/* HEADER */}
+        {/* =====================================================
+            HEADER
+        ===================================================== */}
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
@@ -886,6 +1068,7 @@ export default function AdminAttendancePage() {
             </div>
 
             <div>
+
               <h1 className="text-3xl font-bold text-[#0F2B7B]">
                 Attendance
               </h1>
@@ -893,6 +1076,7 @@ export default function AdminAttendancePage() {
               <p className="mt-1 text-sm text-gray-500">
                 Create events, generate QR attendance and manage volunteer attendance.
               </p>
+
             </div>
 
           </div>
@@ -924,16 +1108,7 @@ export default function AdminAttendancePage() {
                 setError("");
                 setSuccess("");
                 setSelectedEvent(null);
-
-                setForm({
-                  title: "",
-                  description: "",
-                  event_date: "",
-                  start_time: "",
-                  end_time: "",
-                  venue: "",
-                });
-
+                resetForm();
                 setShowCreate(true);
               }}
               className="inline-flex items-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-[#143a96]"
@@ -944,9 +1119,12 @@ export default function AdminAttendancePage() {
             </button>
 
           </div>
+
         </div>
 
-        {/* MESSAGES */}
+        {/* =====================================================
+            MESSAGES
+        ===================================================== */}
 
         {success && (
           <div className="rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-sm font-semibold text-green-800">
@@ -960,7 +1138,9 @@ export default function AdminAttendancePage() {
           </div>
         )}
 
-        {/* SEARCH */}
+        {/* =====================================================
+            SEARCH
+        ===================================================== */}
 
         <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100">
 
@@ -984,7 +1164,9 @@ export default function AdminAttendancePage() {
 
         </section>
 
-        {/* EVENTS */}
+        {/* =====================================================
+            EVENTS
+        ===================================================== */}
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
 
@@ -995,7 +1177,7 @@ export default function AdminAttendancePage() {
             </h2>
 
             <p className="mt-1 text-sm text-gray-500">
-              Manage attendance forms created for NSS events.
+              Manage attendance events created for NSS programmes.
             </p>
 
           </div>
@@ -1036,7 +1218,9 @@ export default function AdminAttendancePage() {
 
                     <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
 
-                      {/* EVENT INFO */}
+                      {/* =================================================
+                          EVENT INFO
+                      ================================================= */}
 
                       <div className="min-w-0">
 
@@ -1095,11 +1279,13 @@ export default function AdminAttendancePage() {
 
                       </div>
 
-                      {/* ACTIONS */}
+                      {/* =================================================
+                          ACTIONS
+                      ================================================= */}
 
                       <div className="flex flex-wrap gap-2">
 
-                        {/* QR */}
+                        {/* SHOW QR */}
 
                         <button
                           type="button"
@@ -1113,7 +1299,7 @@ export default function AdminAttendancePage() {
                           Show QR
                         </button>
 
-                        {/* VIEW */}
+                        {/* OPEN ATTENDANCE */}
 
                         <button
                           type="button"
@@ -1122,11 +1308,12 @@ export default function AdminAttendancePage() {
                               event
                             )
                           }
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-slate-50"
+                          className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-green-700"
+                          title="Open overall attendance records"
                         >
-                          <Eye className="h-4 w-4" />
+                          <CalendarCheck className="h-4 w-4" />
 
-                          Open
+                          Open Attendance
                         </button>
 
                         {/* CLOSE / REOPEN */}
@@ -1206,7 +1393,9 @@ export default function AdminAttendancePage() {
 
         </section>
 
-        {/* CREATE / EDIT MODAL */}
+        {/* =====================================================
+            CREATE / EDIT MODAL
+        ===================================================== */}
 
         {showCreate && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -1216,6 +1405,7 @@ export default function AdminAttendancePage() {
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
 
                 <div>
+
                   <h2 className="text-xl font-bold text-[#0F2B7B]">
                     {selectedEvent
                       ? "Edit Attendance Event"
@@ -1227,6 +1417,7 @@ export default function AdminAttendancePage() {
                       ? "Update the attendance event details."
                       : "Create an event and generate a unique QR attendance form."}
                   </p>
+
                 </div>
 
                 <button
@@ -1235,6 +1426,7 @@ export default function AdminAttendancePage() {
                     if (!saving) {
                       setShowCreate(false);
                       setSelectedEvent(null);
+                      resetForm();
                     }
                   }}
                   className="rounded-xl p-2 text-gray-500 hover:bg-slate-100"
@@ -1249,6 +1441,7 @@ export default function AdminAttendancePage() {
                 {/* TITLE */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Event Name *
                   </label>
@@ -1266,11 +1459,13 @@ export default function AdminAttendancePage() {
                     placeholder="Example: NSS Community Service Programme"
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   />
+
                 </div>
 
                 {/* DESCRIPTION */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Description
                   </label>
@@ -1290,11 +1485,13 @@ export default function AdminAttendancePage() {
                     placeholder="Describe the event..."
                     className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   />
+
                 </div>
 
                 {/* DATE */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Event Date *
                   </label>
@@ -1313,6 +1510,7 @@ export default function AdminAttendancePage() {
                     }
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   />
+
                 </div>
 
                 {/* TIME */}
@@ -1320,6 +1518,7 @@ export default function AdminAttendancePage() {
                 <div className="grid gap-4 sm:grid-cols-2">
 
                   <div>
+
                     <label className="mb-2 block text-sm font-bold text-gray-700">
                       Start Time
                     </label>
@@ -1338,9 +1537,11 @@ export default function AdminAttendancePage() {
                       }
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     />
+
                   </div>
 
                   <div>
+
                     <label className="mb-2 block text-sm font-bold text-gray-700">
                       End Time
                     </label>
@@ -1359,6 +1560,7 @@ export default function AdminAttendancePage() {
                       }
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     />
+
                   </div>
 
                 </div>
@@ -1366,6 +1568,7 @@ export default function AdminAttendancePage() {
                 {/* VENUE */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Venue
                   </label>
@@ -1385,6 +1588,7 @@ export default function AdminAttendancePage() {
                     placeholder="Example: College Auditorium"
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   />
+
                 </div>
 
                 {/* ACTIONS */}
@@ -1397,6 +1601,7 @@ export default function AdminAttendancePage() {
                       if (!saving) {
                         setShowCreate(false);
                         setSelectedEvent(null);
+                        resetForm();
                       }
                     }}
                     className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-gray-700 hover:bg-slate-50"
@@ -1414,6 +1619,7 @@ export default function AdminAttendancePage() {
                     disabled={saving}
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-6 py-3 text-sm font-bold text-white hover:bg-[#143a96] disabled:cursor-not-allowed disabled:opacity-60"
                   >
+
                     {saving && (
                       <RefreshCw className="h-4 w-4 animate-spin" />
                     )}
@@ -1423,6 +1629,7 @@ export default function AdminAttendancePage() {
                       : selectedEvent
                       ? "Save Changes"
                       : "Create Attendance"}
+
                   </button>
 
                 </div>
@@ -1434,7 +1641,9 @@ export default function AdminAttendancePage() {
           </div>
         )}
 
-        {/* QR MODAL */}
+        {/* =====================================================
+            QR MODAL
+        ===================================================== */}
 
         {showQR &&
           selectedEvent && (
@@ -1453,6 +1662,7 @@ export default function AdminAttendancePage() {
                     </div>
 
                     <div>
+
                       <h2 className="text-xl font-bold">
                         Attendance QR Code
                       </h2>
@@ -1460,6 +1670,7 @@ export default function AdminAttendancePage() {
                       <p className="text-sm text-blue-100">
                         Scan this QR code to open attendance
                       </p>
+
                     </div>
 
                   </div>
@@ -1525,6 +1736,7 @@ export default function AdminAttendancePage() {
                       <div className="flex items-start justify-between gap-3">
 
                         <div>
+
                           <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
                             Event
                           </p>
@@ -1532,6 +1744,7 @@ export default function AdminAttendancePage() {
                           <h3 className="mt-1 text-xl font-bold text-[#0F2B7B]">
                             {selectedEvent.title}
                           </h3>
+
                         </div>
 
                         {selectedEvent.status ===
@@ -1558,11 +1771,13 @@ export default function AdminAttendancePage() {
                       <div className="mt-5 space-y-3">
 
                         <div className="flex gap-3">
+
                           <span className="text-lg">
                             📅
                           </span>
 
                           <div>
+
                             <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
                               Date
                             </p>
@@ -1572,16 +1787,20 @@ export default function AdminAttendancePage() {
                                 selectedEvent.event_date
                               )}
                             </p>
+
                           </div>
+
                         </div>
 
                         {selectedEvent.start_time && (
                           <div className="flex gap-3">
+
                             <span className="text-lg">
                               🕐
                             </span>
 
                             <div>
+
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
                                 Time
                               </p>
@@ -1592,17 +1811,21 @@ export default function AdminAttendancePage() {
                                   selectedEvent.end_time
                                 )}
                               </p>
+
                             </div>
+
                           </div>
                         )}
 
                         {selectedEvent.venue && (
                           <div className="flex gap-3">
+
                             <span className="text-lg">
                               📍
                             </span>
 
                             <div>
+
                               <p className="text-xs font-bold uppercase tracking-wide text-gray-400">
                                 Venue
                               </p>
@@ -1612,7 +1835,9 @@ export default function AdminAttendancePage() {
                                   selectedEvent.venue
                                 }
                               </p>
+
                             </div>
+
                           </div>
                         )}
 
@@ -1658,9 +1883,13 @@ export default function AdminAttendancePage() {
 
                     </div>
 
-                    {/* ACTIONS */}
+                    {/* =================================================
+                        QR MODAL ACTIONS
+                    ================================================= */}
 
                     <div className="mt-auto grid gap-3 pt-5 sm:grid-cols-2">
+
+                      {/* DOWNLOAD QR */}
 
                       <button
                         type="button"
@@ -1674,26 +1903,34 @@ export default function AdminAttendancePage() {
                         Download QR
                       </button>
 
-                      {/* FIX:
-                          Do NOT use `event` here.
-                          This modal is outside filteredEvents.map().
-                          Use the already selected event.
-                      */}
+                      {/* OPEN QR */}
 
                       <button
-  type="button"
-  onClick={openAttendancePage}
-  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 font-bold text-gray-700 hover:bg-slate-50"
->
-  <Eye className="h-5 w-5" />
-  Open Attendance
-</button>
+                        type="button"
+                        onClick={() =>
+                          openQRCodeImage(
+                            selectedEvent
+                          )
+                        }
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 font-bold text-gray-700 hover:bg-slate-50"
+                      >
+                        <Eye className="h-5 w-5" />
 
+                        Open QR
+                      </button>
+                      
                     </div>
 
                     <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
-                      <strong>How it works:</strong>{" "}
-                      Share or display this QR code at the event. Volunteers scan it, open the attendance page, verify their account and submit attendance.
+
+                      <strong>
+                        How it works:
+                      </strong>{" "}
+
+                      Download or open the QR code to display it at the event.
+                      Volunteers scan the QR code, open the attendance page,
+                      verify their account and submit attendance.
+
                     </div>
 
                   </div>
@@ -1708,4 +1945,34 @@ export default function AdminAttendancePage() {
       </div>
     </AdminDashboardLayout>
   );
+}
+
+// =========================================================
+// ESCAPE HTML
+// =========================================================
+
+function escapeHtml(
+  value: string
+) {
+  return value
+    .replace(
+      /&/g,
+      "&amp;"
+    )
+    .replace(
+      /</g,
+      "&lt;"
+    )
+    .replace(
+      />/g,
+      "&gt;"
+    )
+    .replace(
+      /"/g,
+      "&quot;"
+    )
+    .replace(
+      /'/g,
+      "&#039;"
+    );
 }
