@@ -17,6 +17,7 @@ export default function AboutSection() {
       </p>
 
       <Button className="mt-8 bg-[#0F2B7B] hover:bg-[#16398F]">
+        
         Know More
       </Button>
     </div>

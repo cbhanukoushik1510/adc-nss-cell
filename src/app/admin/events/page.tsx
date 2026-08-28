@@ -15,88 +15,129 @@ import {
   Trash2,
   X,
   ExternalLink,
+  Users,
+  Lock,
+  Unlock,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import AdminDashboardLayout from "@/components/admin/AdminDashboardLayout";
 
 /* =========================================================
-   EVENT TYPE
+   TYPES
 ========================================================= */
 
 interface EventItem {
   id: string;
-
   title: string;
   description: string | null;
 
-  event_type: string;
-
   event_date: string;
-  event_time: string | null;
+  start_time: string | null;
+  end_time: string | null;
 
-  location: string | null;
-
+  // Existing database also contains these legacy/additional fields.
+  venue: string | null;
   image_url: string | null;
 
-  registration_link: string | null;
+  status: string;
+  capacity: number | null;
+  participants_count: number;
 
-  is_published: boolean;
-
+  created_by: string | null;
   created_at: string;
   updated_at: string;
-}
 
-/* =========================================================
-   FORM TYPE
-========================================================= */
+  attendance_token: string | null;
+
+  event_time: string | null;
+  event_type: string | null;
+  location: string | null;
+  registration_link: string | null;
+  is_published: boolean | null;
+
+  registration_open: boolean | null;
+  registration_deadline: string | null;
+}
 
 interface EventForm {
   title: string;
   description: string;
-  event_type: string;
 
   event_date: string;
-  event_time: string;
+  start_time: string;
+  end_time: string;
 
-  location: string;
+  venue: string;
 
   image_url: string;
 
   registration_link: string;
 
-  is_published: boolean;
-}
+  status: string;
 
-/* =========================================================
-   DEFAULT FORM
-========================================================= */
+  capacity: string;
+
+  is_published: boolean;
+
+  registration_open: boolean;
+
+  registration_deadline: string;
+}
 
 const emptyForm: EventForm = {
   title: "",
   description: "",
-  event_type: "Event",
 
   event_date: "",
-  event_time: "",
+  start_time: "",
+  end_time: "",
 
-  location: "",
+  venue: "",
 
   image_url: "",
 
   registration_link: "",
 
+  status: "Upcoming",
+
+  capacity: "",
+
   is_published: false,
+
+  registration_open: false,
+
+  registration_deadline: "",
 };
 
+type EventFilter = "All" | "Published" | "Draft";
+
 /* =========================================================
-   FILTER
+   HELPERS
 ========================================================= */
 
-type EventFilter =
-  | "All"
-  | "Published"
-  | "Draft";
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null) {
+    const item = error as {
+      message?: string;
+      details?: string;
+      hint?: string;
+    };
+
+    return (
+      item.message ||
+      item.details ||
+      item.hint ||
+      "Something went wrong."
+    );
+  }
+
+  return "Something went wrong.";
+}
 
 /* =========================================================
    MAIN PAGE
@@ -105,14 +146,10 @@ type EventFilter =
 export default function AdminEventsPage() {
   const [events, setEvents] = useState<EventItem[]>([]);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [saving, setSaving] =
-    useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
@@ -120,20 +157,18 @@ export default function AdminEventsPage() {
   const [publishingId, setPublishingId] =
     useState<string | null>(null);
 
-  const [error, setError] =
-    useState("");
+  const [registrationId, setRegistrationId] =
+    useState<string | null>(null);
 
-  const [success, setSuccess] =
-    useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const [search, setSearch] =
-    useState("");
+  const [search, setSearch] = useState("");
 
   const [filter, setFilter] =
     useState<EventFilter>("All");
 
-  const [showForm, setShowForm] =
-    useState(false);
+  const [showForm, setShowForm] = useState(false);
 
   const [editingEvent, setEditingEvent] =
     useState<EventItem | null>(null);
@@ -142,71 +177,110 @@ export default function AdminEventsPage() {
     useState<EventForm>(emptyForm);
 
   /* =======================================================
+     CHECK WHETHER REGISTRATION IS CURRENTLY OPEN
+  ======================================================= */
+
+  const isRegistrationOpen = (
+    event: EventItem
+  ) => {
+    if (event.registration_open !== true) {
+      return false;
+    }
+
+    if (!event.registration_deadline) {
+      return true;
+    }
+
+    const deadline = new Date(
+      event.registration_deadline
+    ).getTime();
+
+    if (Number.isNaN(deadline)) {
+      return true;
+    }
+
+    return Date.now() < deadline;
+  };
+
+  /* =======================================================
      LOAD EVENTS
   ======================================================= */
 
-  const loadEvents = async (refresh = false) => {
-  if (refresh) {
-    setRefreshing(true);
-  } else {
-    setLoading(true);
-  }
+  const loadEvents = async (
+    refresh = false
+  ) => {
+    if (refresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
 
-  setError("");
+    setError("");
 
-  try {
-    const { data, error: eventsError } = await supabase
-      .from("events")
-      .select("*")
-      .order("event_date", { ascending: true })
-      .order("event_time", { ascending: true });
+    try {
+      const {
+        data,
+        error: eventsError,
+      } = await supabase
+        .from("events")
+        .select(`
+          id,
+          title,
+          description,
+          event_date,
+          start_time,
+          end_time,
+          venue,
+          image_url,
+          status,
+          capacity,
+          participants_count,
+          created_by,
+          created_at,
+          updated_at,
+          attendance_token,
+          event_time,
+          event_type,
+          location,
+          registration_link,
+          is_published,
+          registration_open,
+          registration_deadline
+        `)
+        .order("event_date", {
+          ascending: true,
+        })
+        .order("start_time", {
+          ascending: true,
+        });
 
-    if (eventsError) {
-      console.error("Supabase events error:", {
-        message: eventsError.message,
-        details: eventsError.details,
-        hint: eventsError.hint,
-        code: eventsError.code,
-      });
+      if (eventsError) {
+        console.error(
+          "Supabase events loading error:",
+          eventsError
+        );
 
-      throw new Error(
-        eventsError.message ||
-          eventsError.details ||
-          "Supabase could not load events."
+        throw eventsError;
+      }
+
+      setEvents(
+        (data ?? []) as EventItem[]
       );
+    } catch (err) {
+      console.error(
+        "Events loading error:",
+        err
+      );
+
+      setError(
+        getErrorMessage(err) ||
+          "Unable to load events."
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-
-    setEvents((data ?? []) as EventItem[]);
-  } catch (err) {
-    console.error("Events loading error:", err);
-
-    let message = "Unable to load events.";
-
-    if (err instanceof Error) {
-      message = err.message;
-    } else if (
-      typeof err === "object" &&
-      err !== null
-    ) {
-      const supabaseError = err as {
-        message?: string;
-        details?: string;
-        hint?: string;
-        code?: string;
-      };
-
-      message =
-        supabaseError.message ||
-        supabaseError.details ||
-        "Unable to load events.";
-    }
-
-    setError(message);
-  } finally {
-    setLoading(false);
-    setRefreshing(false);
-  }
-};
+  };
 
   /* =======================================================
      INITIAL LOAD
@@ -226,7 +300,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     OPEN CREATE FORM
+     OPEN CREATE
   ======================================================= */
 
   const openCreateForm = () => {
@@ -242,7 +316,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     OPEN EDIT FORM
+     OPEN EDIT
   ======================================================= */
 
   const openEditForm = (
@@ -252,25 +326,64 @@ export default function AdminEventsPage() {
 
     setEditingEvent(event);
 
+    let deadline = "";
+
+    if (event.registration_deadline) {
+      const date = new Date(
+        event.registration_deadline
+      );
+
+      if (!Number.isNaN(date.getTime())) {
+        const localYear =
+          date.getFullYear();
+
+        const localMonth = String(
+          date.getMonth() + 1
+        ).padStart(2, "0");
+
+        const localDay = String(
+          date.getDate()
+        ).padStart(2, "0");
+
+        const localHours = String(
+          date.getHours()
+        ).padStart(2, "0");
+
+        const localMinutes = String(
+          date.getMinutes()
+        ).padStart(2, "0");
+
+        deadline =
+          `${localYear}-${localMonth}-${localDay}` +
+          `T${localHours}:${localMinutes}`;
+      }
+    }
+
     setForm({
       title: event.title || "",
 
       description:
         event.description || "",
 
-      event_type:
-        event.event_type || "Event",
-
       event_date:
         event.event_date || "",
 
-      event_time:
-        event.event_time
+      start_time:
+        event.start_time
+          ? event.start_time.slice(0, 5)
+          : event.event_time
           ? event.event_time.slice(0, 5)
           : "",
 
-      location:
-        event.location || "",
+      end_time:
+        event.end_time
+          ? event.end_time.slice(0, 5)
+          : "",
+
+      venue:
+        event.venue ||
+        event.location ||
+        "",
 
       image_url:
         event.image_url || "",
@@ -278,8 +391,23 @@ export default function AdminEventsPage() {
       registration_link:
         event.registration_link || "",
 
+      status:
+        event.status || "Upcoming",
+
+      capacity:
+        event.capacity !== null &&
+        event.capacity !== undefined
+          ? String(event.capacity)
+          : "",
+
       is_published:
-        event.is_published,
+        event.is_published === true,
+
+      registration_open:
+        event.registration_open === true,
+
+      registration_deadline:
+        deadline,
     });
 
     setShowForm(true);
@@ -293,7 +421,6 @@ export default function AdminEventsPage() {
     if (saving) return;
 
     setShowForm(false);
-
     setEditingEvent(null);
 
     setForm({
@@ -340,27 +467,115 @@ export default function AdminEventsPage() {
       return;
     }
 
+    if (
+      form.start_time &&
+      form.end_time &&
+      form.end_time <= form.start_time
+    ) {
+      setError(
+        "End time must be after start time."
+      );
+      return;
+    }
+
+    if (
+      form.registration_open &&
+      form.registration_deadline
+    ) {
+      const deadline = new Date(
+        form.registration_deadline
+      ).getTime();
+
+      if (
+        Number.isNaN(deadline)
+      ) {
+        setError(
+          "Please enter a valid registration deadline."
+        );
+        return;
+      }
+
+      if (
+        deadline <= Date.now()
+      ) {
+        setError(
+          "Registration deadline must be in the future when opening registration."
+        );
+        return;
+      }
+    }
+
+    let capacity: number | null = null;
+
+    if (form.capacity.trim()) {
+      const parsed = Number(
+        form.capacity
+      );
+
+      if (
+        !Number.isInteger(parsed) ||
+        parsed < 1
+      ) {
+        setError(
+          "Capacity must be a positive whole number."
+        );
+        return;
+      }
+
+      capacity = parsed;
+    }
+
     setSaving(true);
 
     try {
+      /*
+       * IMPORTANT:
+       * We use the actual database columns.
+       *
+       * Registration deadline is stored as ISO timestamp.
+       */
+
+      let registrationDeadline:
+        | string
+        | null = null;
+
+      if (
+        form.registration_deadline
+      ) {
+        const deadlineDate =
+          new Date(
+            form.registration_deadline
+          );
+
+        if (
+          !Number.isNaN(
+            deadlineDate.getTime()
+          )
+        ) {
+          registrationDeadline =
+            deadlineDate.toISOString();
+        }
+      }
+
       const payload = {
-        title: form.title.trim(),
+        title:
+          form.title.trim(),
 
         description:
-          form.description.trim() || null,
-
-        event_type:
-          form.event_type.trim() ||
-          "Event",
+          form.description.trim() ||
+          null,
 
         event_date:
           form.event_date,
 
-        event_time:
-          form.event_time || null,
+        start_time:
+          form.start_time || null,
 
-        location:
-          form.location.trim() || null,
+        end_time:
+          form.end_time || null,
+
+        venue:
+          form.venue.trim() || null,
 
         image_url:
           form.image_url.trim() || null,
@@ -369,8 +584,24 @@ export default function AdminEventsPage() {
           form.registration_link.trim() ||
           null,
 
+        status:
+          form.status || "Upcoming",
+
+        capacity,
+
+        /*
+         * Keep participants count unchanged.
+         * For a newly-created event it will start at 0
+         * if the database default is configured.
+         */
         is_published:
           form.is_published,
+
+        registration_open:
+          form.registration_open,
+
+        registration_deadline:
+          registrationDeadline,
       };
 
       if (editingEvent) {
@@ -396,7 +627,15 @@ export default function AdminEventsPage() {
           error: insertError,
         } = await supabase
           .from("events")
-          .insert(payload);
+          .insert({
+            ...payload,
+
+            /*
+             * Make sure a newly created event
+             * starts with zero participants.
+             */
+            participants_count: 0,
+          });
 
         if (insertError) {
           throw insertError;
@@ -419,9 +658,8 @@ export default function AdminEventsPage() {
       );
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save event."
+        getErrorMessage(err) ||
+          "Unable to save event."
       );
     } finally {
       setSaving(false);
@@ -429,7 +667,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     DELETE EVENT
+     DELETE
   ======================================================= */
 
   const handleDelete = async (
@@ -475,9 +713,8 @@ export default function AdminEventsPage() {
       );
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to delete event."
+        getErrorMessage(err) ||
+          "Unable to delete event."
       );
     } finally {
       setDeletingId(null);
@@ -485,7 +722,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     TOGGLE PUBLISH
+     PUBLISH / UNPUBLISH
   ======================================================= */
 
   const togglePublish = async (
@@ -497,7 +734,7 @@ export default function AdminEventsPage() {
 
     try {
       const newStatus =
-        !event.is_published;
+        event.is_published !== true;
 
       const {
         error: updateError,
@@ -536,12 +773,132 @@ export default function AdminEventsPage() {
       );
 
       setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to change publish status."
+        getErrorMessage(err) ||
+          "Unable to change publish status."
       );
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  /* =======================================================
+     MANUAL REGISTRATION OPEN/CLOSE
+  ======================================================= */
+
+  const toggleRegistration = async (
+    event: EventItem
+  ) => {
+    clearMessages();
+
+    setRegistrationId(event.id);
+
+    try {
+      const currentlyOpen =
+        isRegistrationOpen(event);
+
+      /*
+       * If registration is currently open,
+       * manually close it.
+       *
+       * We keep the deadline because it is useful
+       * historical information.
+       */
+      if (currentlyOpen) {
+        const {
+          error: updateError,
+        } = await supabase
+          .from("events")
+          .update({
+            registration_open: false,
+          })
+          .eq("id", event.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        setEvents((current) =>
+          current.map((item) =>
+            item.id === event.id
+              ? {
+                  ...item,
+                  registration_open:
+                    false,
+                }
+              : item
+          )
+        );
+
+        setSuccess(
+          "Event registration closed manually."
+        );
+      } else {
+        /*
+         * Manual reopening.
+         *
+         * If the old deadline has already passed,
+         * remove it. This means the event remains
+         * open until an administrator closes it
+         * or sets a new deadline.
+         */
+        const deadlinePassed =
+          event.registration_deadline &&
+          new Date(
+            event.registration_deadline
+          ).getTime() <= Date.now();
+
+        const newDeadline =
+          deadlinePassed
+            ? null
+            : event.registration_deadline;
+
+        const {
+          error: updateError,
+        } = await supabase
+          .from("events")
+          .update({
+            registration_open: true,
+            registration_deadline:
+              newDeadline,
+          })
+          .eq("id", event.id);
+
+        if (updateError) {
+          throw updateError;
+        }
+
+        setEvents((current) =>
+          current.map((item) =>
+            item.id === event.id
+              ? {
+                  ...item,
+                  registration_open:
+                    true,
+                  registration_deadline:
+                    newDeadline,
+                }
+              : item
+          )
+        );
+
+        setSuccess(
+          deadlinePassed
+            ? "Registration reopened manually. It is now open without a deadline."
+            : "Event registration opened successfully."
+        );
+      }
+    } catch (err) {
+      console.error(
+        "Registration toggle error:",
+        err
+      );
+
+      setError(
+        getErrorMessage(err) ||
+          "Unable to change registration status."
+      );
+    } finally {
+      setRegistrationId(null);
     }
   };
 
@@ -555,13 +912,13 @@ export default function AdminEventsPage() {
   const publishedCount =
     events.filter(
       (event) =>
-        event.is_published
+        event.is_published === true
     ).length;
 
   const draftCount =
     events.filter(
       (event) =>
-        !event.is_published
+        event.is_published !== true
     ).length;
 
   /* =======================================================
@@ -579,14 +936,14 @@ export default function AdminEventsPage() {
         (event) => {
           if (
             filter === "Published" &&
-            !event.is_published
+            event.is_published !== true
           ) {
             return false;
           }
 
           if (
             filter === "Draft" &&
-            event.is_published
+            event.is_published === true
           ) {
             return false;
           }
@@ -598,7 +955,9 @@ export default function AdminEventsPage() {
           const searchableText = [
             event.title,
             event.description,
+            event.status,
             event.event_type,
+            event.venue,
             event.location,
           ]
             .filter(Boolean)
@@ -688,6 +1047,40 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
+     DEADLINE FORMAT
+  ======================================================= */
+
+  const formatDeadline = (
+    value: string | null
+  ) => {
+    if (!value) {
+      return "No deadline";
+    }
+
+    const date =
+      new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return "Invalid deadline";
+    }
+
+    return date.toLocaleString(
+      "en-IN",
+      {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      }
+    );
+  };
+
+  /* =======================================================
      PAGE
   ======================================================= */
 
@@ -695,9 +1088,7 @@ export default function AdminEventsPage() {
     <AdminDashboardLayout>
       <div className="mx-auto w-full max-w-7xl space-y-6">
 
-        {/* =================================================
-            HEADER
-        ================================================= */}
+        {/* HEADER */}
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
@@ -714,7 +1105,7 @@ export default function AdminEventsPage() {
                 </h1>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Create, manage and publish NSS events.
+                  Create, manage, publish and control NSS event registration.
                 </p>
               </div>
 
@@ -755,9 +1146,7 @@ export default function AdminEventsPage() {
           </div>
         </div>
 
-        {/* =================================================
-            SUCCESS
-        ================================================= */}
+        {/* SUCCESS */}
 
         {success && (
           <div className="flex items-center justify-between rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-green-800">
@@ -785,9 +1174,7 @@ export default function AdminEventsPage() {
           </div>
         )}
 
-        {/* =================================================
-            ERROR
-        ================================================= */}
+        {/* ERROR */}
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
@@ -817,9 +1204,7 @@ export default function AdminEventsPage() {
           </div>
         )}
 
-        {/* =================================================
-            STATISTICS
-        ================================================= */}
+        {/* STATISTICS */}
 
         <div className="grid gap-4 sm:grid-cols-3">
 
@@ -855,13 +1240,9 @@ export default function AdminEventsPage() {
 
         </div>
 
-        {/* =================================================
-            EVENTS CARD
-        ================================================= */}
+        {/* EVENTS */}
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
-
-          {/* HEADER */}
 
           <div className="border-b border-slate-200 p-5 sm:p-6">
 
@@ -873,7 +1254,7 @@ export default function AdminEventsPage() {
                 </h2>
 
                 <p className="mt-1 text-sm text-gray-500">
-                  Manage all upcoming and past NSS events.
+                  Manage upcoming and past NSS events.
                 </p>
               </div>
 
@@ -896,8 +1277,6 @@ export default function AdminEventsPage() {
               </div>
 
             </div>
-
-            {/* FILTERS */}
 
             <div className="mt-5 flex flex-wrap gap-2">
 
@@ -953,9 +1332,7 @@ export default function AdminEventsPage() {
             </div>
           </div>
 
-          {/* =================================================
-              LOADING
-          ================================================= */}
+          {/* LOADING */}
 
           {loading ? (
             <div className="p-14 text-center">
@@ -969,9 +1346,7 @@ export default function AdminEventsPage() {
             </div>
           ) : filteredEvents.length === 0 ? (
 
-            /* =================================================
-               EMPTY
-            ================================================= */
+            /* EMPTY */
 
             <div className="p-14 text-center">
 
@@ -1012,189 +1387,324 @@ export default function AdminEventsPage() {
             </div>
           ) : (
 
-            /* =================================================
-               EVENT LIST
-            ================================================= */
+            /* EVENT LIST */
 
             <div className="divide-y divide-slate-200">
 
               {filteredEvents.map(
-                (event) => (
-                  <article
-                    key={event.id}
-                    className="p-5 transition hover:bg-slate-50 sm:p-6"
-                  >
+                (event) => {
 
-                    <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
+                  const registrationOpen =
+                    isRegistrationOpen(
+                      event
+                    );
 
-                      {/* EVENT IMAGE */}
+                  return (
+                    <article
+                      key={event.id}
+                      className="p-5 transition hover:bg-slate-50 sm:p-6"
+                    >
 
-                      <div className="h-28 w-full shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:h-32 sm:w-48">
+                      <div className="flex flex-col gap-5">
 
-                        {event.image_url ? (
-                          <img
-                            src={
-                              event.image_url
-                            }
-                            alt={
-                              event.title
-                            }
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-[#0F2B7B]">
-                            <CalendarDays className="h-10 w-10" />
-                          </div>
-                        )}
+                        <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
 
-                      </div>
+                          {/* IMAGE */}
 
-                      {/* EVENT INFO */}
+                          <div className="h-28 w-full shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:h-32 sm:w-48">
 
-                      <div className="min-w-0 flex-1">
-
-                        <div className="flex flex-wrap items-center gap-2">
-
-                          <h3 className="text-lg font-bold text-gray-900">
-                            {event.title}
-                          </h3>
-
-                          {event.is_published ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
-                              <CheckCircle className="h-3.5 w-3.5" />
-                              Published
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
-                              <EyeOff className="h-3.5 w-3.5" />
-                              Draft
-                            </span>
-                          )}
-
-                          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0F2B7B]">
-                            {event.event_type}
-                          </span>
-
-                        </div>
-
-                        {event.description && (
-                          <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-gray-500">
-                            {
-                              event.description
-                            }
-                          </p>
-                        )}
-
-                        <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-500">
-
-                          <span className="inline-flex items-center gap-2">
-                            <CalendarDays className="h-4 w-4 text-[#0F2B7B]" />
-
-                            {formatDate(
-                              event.event_date
+                            {event.image_url ? (
+                              <img
+                                src={
+                                  event.image_url
+                                }
+                                alt={
+                                  event.title
+                                }
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-[#0F2B7B]">
+                                <CalendarDays className="h-10 w-10" />
+                              </div>
                             )}
-                          </span>
 
-                          {event.event_time && (
-                            <span className="inline-flex items-center gap-2">
-                              <Clock className="h-4 w-4 text-gray-400" />
+                          </div>
 
-                              {formatTime(
-                                event.event_time
+                          {/* INFO */}
+
+                          <div className="min-w-0 flex-1">
+
+                            <div className="flex flex-wrap items-center gap-2">
+
+                              <h3 className="text-lg font-bold text-gray-900">
+                                {event.title}
+                              </h3>
+
+                              {event.is_published === true ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-3 py-1 text-xs font-bold text-green-700">
+                                  <CheckCircle className="h-3.5 w-3.5" />
+                                  Published
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+                                  <EyeOff className="h-3.5 w-3.5" />
+                                  Draft
+                                </span>
                               )}
-                            </span>
-                          )}
 
-                          {event.location && (
-                            <span className="inline-flex items-center gap-2">
-                              <MapPin className="h-4 w-4 text-gray-400" />
+                              {event.event_type && (
+                                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-[#0F2B7B]">
+                                  {event.event_type}
+                                </span>
+                              )}
 
-                              {event.location}
-                            </span>
-                          )}
+                            </div>
+
+                            {event.description && (
+                              <p className="mt-2 line-clamp-2 max-w-3xl text-sm leading-6 text-gray-500">
+                                {
+                                  event.description
+                                }
+                              </p>
+                            )}
+
+                            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-500">
+
+                              <span className="inline-flex items-center gap-2">
+                                <CalendarDays className="h-4 w-4 text-[#0F2B7B]" />
+
+                                {formatDate(
+                                  event.event_date
+                                )}
+                              </span>
+
+                              {(event.start_time ||
+                                event.event_time) && (
+                                <span className="inline-flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-gray-400" />
+
+                                  {formatTime(
+                                    event.start_time ||
+                                      event.event_time
+                                  )}
+
+                                  {event.end_time &&
+                                    ` - ${formatTime(
+                                      event.end_time
+                                    )}`}
+                                </span>
+                              )}
+
+                              {(event.venue ||
+                                event.location) && (
+                                <span className="inline-flex items-center gap-2">
+                                  <MapPin className="h-4 w-4 text-gray-400" />
+
+                                  {event.venue ||
+                                    event.location}
+                                </span>
+                              )}
+
+                              <span className="inline-flex items-center gap-2">
+                                <Users className="h-4 w-4 text-gray-400" />
+
+                                {event.participants_count || 0}
+
+                                {event.capacity
+                                  ? ` / ${event.capacity}`
+                                  : ""}{" "}
+                                registered
+                              </span>
+
+                            </div>
+
+                          </div>
+
+                          {/* ACTIONS */}
+
+                          <div className="flex flex-wrap gap-2 xl:w-[390px] xl:justify-end">
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                togglePublish(
+                                  event
+                                )
+                              }
+                              disabled={
+                                publishingId ===
+                                event.id
+                              }
+                              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                event.is_published ===
+                                true
+                                  ? "border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                                  : "bg-green-600 text-white hover:bg-green-700"
+                              }`}
+                            >
+                              {publishingId ===
+                              event.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : event.is_published ===
+                                true ? (
+                                <EyeOff className="h-4 w-4" />
+                              ) : (
+                                <Eye className="h-4 w-4" />
+                              )}
+
+                              {event.is_published ===
+                              true
+                                ? "Unpublish"
+                                : "Publish"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                toggleRegistration(
+                                  event
+                                )
+                              }
+                              disabled={
+                                registrationId ===
+                                event.id
+                              }
+                              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                registrationOpen
+                                  ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                  : "bg-blue-600 text-white hover:bg-blue-700"
+                              }`}
+                            >
+                              {registrationId ===
+                              event.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : registrationOpen ? (
+                                <Lock className="h-4 w-4" />
+                              ) : (
+                                <Unlock className="h-4 w-4" />
+                              )}
+
+                              {registrationOpen
+                                ? "Close Registration"
+                                : "Open Registration"}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openEditForm(
+                                  event
+                                )
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-slate-50"
+                            >
+                              <Edit3 className="h-4 w-4" />
+
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleDelete(
+                                  event
+                                )
+                              }
+                              disabled={
+                                deletingId ===
+                                event.id
+                              }
+                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
+                            >
+                              {deletingId ===
+                              event.id ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+
+                              Delete
+                            </button>
+
+                          </div>
+
+                        </div>
+
+                        {/* REGISTRATION STATUS */}
+
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+                            <div className="flex items-center gap-3">
+
+                              <div
+                                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                                  registrationOpen
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-red-100 text-red-700"
+                                }`}
+                              >
+                                {registrationOpen ? (
+                                  <Unlock className="h-5 w-5" />
+                                ) : (
+                                  <Lock className="h-5 w-5" />
+                                )}
+                              </div>
+
+                              <div>
+
+                                <p className="text-sm font-bold text-gray-800">
+                                  Registration{" "}
+                                  {registrationOpen
+                                    ? "Open"
+                                    : "Closed"}
+                                </p>
+
+                                <p className="text-xs text-gray-500">
+                                  {event.registration_deadline
+                                    ? `Deadline: ${formatDeadline(
+                                        event.registration_deadline
+                                      )}`
+                                    : "No registration deadline set"}
+                                </p>
+
+                              </div>
+
+                            </div>
+
+                            <div className="text-sm text-gray-500">
+
+                              <span className="font-semibold text-gray-700">
+                                {event.participants_count ||
+                                  0}
+                              </span>
+
+                              {" "}registered
+
+                              {event.capacity && (
+                                <>
+                                  {" "}of{" "}
+                                  <span className="font-semibold text-gray-700">
+                                    {
+                                      event.capacity
+                                    }
+                                  </span>
+                                </>
+                              )}
+
+                            </div>
+
+                          </div>
 
                         </div>
 
                       </div>
 
-                      {/* ACTIONS */}
-
-                      <div className="flex flex-wrap gap-2 xl:w-[360px] xl:justify-end">
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            togglePublish(
-                              event
-                            )
-                          }
-                          disabled={
-                            publishingId ===
-                            event.id
-                          }
-                          className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                            event.is_published
-                              ? "border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
-                              : "bg-green-600 text-white hover:bg-green-700"
-                          }`}
-                        >
-                          {publishingId ===
-                          event.id ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : event.is_published ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-
-                          {event.is_published
-                            ? "Unpublish"
-                            : "Publish"}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openEditForm(
-                              event
-                            )
-                          }
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-slate-50"
-                        >
-                          <Edit3 className="h-4 w-4" />
-
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDelete(
-                              event
-                            )
-                          }
-                          disabled={
-                            deletingId ===
-                            event.id
-                          }
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
-                        >
-                          {deletingId ===
-                          event.id ? (
-                            <RefreshCw className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-
-                          Delete
-                        </button>
-
-                      </div>
-
-                    </div>
-
-                  </article>
-                )
+                    </article>
+                  );
+                }
               )}
 
             </div>
@@ -1255,9 +1765,9 @@ export default function AdminEventsPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-gray-700">
-                    Event Title
+                    Event Title{" "}
                     <span className="text-red-500">
-                      {" "}*
+                      *
                     </span>
                   </label>
 
@@ -1271,68 +1781,13 @@ export default function AdminEventsPage() {
                     ) =>
                       updateForm(
                         "title",
-                        event
-                          .target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Example: NSS Orientation Programme"
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     required
                   />
-                </div>
-
-                {/* TYPE */}
-
-                <div>
-                  <label className="mb-2 block text-sm font-bold text-gray-700">
-                    Event Type
-                  </label>
-
-                  <select
-                    value={
-                      form.event_type
-                    }
-                    onChange={(
-                      event
-                    ) =>
-                      updateForm(
-                        "event_type",
-                        event
-                          .target
-                          .value
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
-                  >
-                    <option value="Event">
-                      Event
-                    </option>
-
-                    <option value="Workshop">
-                      Workshop
-                    </option>
-
-                    <option value="Camp">
-                      Camp
-                    </option>
-
-                    <option value="Meeting">
-                      Meeting
-                    </option>
-
-                    <option value="Awareness">
-                      Awareness Programme
-                    </option>
-
-                    <option value="Celebration">
-                      Celebration
-                    </option>
-
-                    <option value="Other">
-                      Other
-                    </option>
-                  </select>
                 </div>
 
                 {/* DESCRIPTION */}
@@ -1351,9 +1806,7 @@ export default function AdminEventsPage() {
                     ) =>
                       updateForm(
                         "description",
-                        event
-                          .target
-                          .value
+                        event.target.value
                       )
                     }
                     rows={5}
@@ -1362,15 +1815,15 @@ export default function AdminEventsPage() {
                   />
                 </div>
 
-                {/* DATE / TIME */}
+                {/* DATE / TIMES */}
 
-                <div className="grid gap-5 sm:grid-cols-2">
+                <div className="grid gap-5 sm:grid-cols-3">
 
                   <div>
                     <label className="mb-2 block text-sm font-bold text-gray-700">
-                      Event Date
+                      Event Date{" "}
                       <span className="text-red-500">
-                        {" "}*
+                        *
                       </span>
                     </label>
 
@@ -1384,9 +1837,7 @@ export default function AdminEventsPage() {
                       ) =>
                         updateForm(
                           "event_date",
-                          event
-                            .target
-                            .value
+                          event.target.value
                         )
                       }
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
@@ -1396,22 +1847,42 @@ export default function AdminEventsPage() {
 
                   <div>
                     <label className="mb-2 block text-sm font-bold text-gray-700">
-                      Event Time
+                      Start Time
                     </label>
 
                     <input
                       type="time"
                       value={
-                        form.event_time
+                        form.start_time
                       }
                       onChange={(
                         event
                       ) =>
                         updateForm(
-                          "event_time",
-                          event
-                            .target
-                            .value
+                          "start_time",
+                          event.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">
+                      End Time
+                    </label>
+
+                    <input
+                      type="time"
+                      value={
+                        form.end_time
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "end_time",
+                          event.target.value
                         )
                       }
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
@@ -1420,26 +1891,24 @@ export default function AdminEventsPage() {
 
                 </div>
 
-                {/* LOCATION */}
+                {/* VENUE */}
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-gray-700">
-                    Location
+                    Venue
                   </label>
 
                   <input
                     type="text"
                     value={
-                      form.location
+                      form.venue
                     }
                     onChange={(
                       event
                     ) =>
                       updateForm(
-                        "location",
-                        event
-                          .target
-                          .value
+                        "venue",
+                        event.target.value
                       )
                     }
                     placeholder="Example: ADC Auditorium"
@@ -1447,7 +1916,82 @@ export default function AdminEventsPage() {
                   />
                 </div>
 
-                {/* IMAGE URL */}
+                {/* STATUS */}
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-700">
+                    Event Status
+                  </label>
+
+                  <select
+                    value={
+                      form.status
+                    }
+                    onChange={(
+                      event
+                    ) =>
+                      updateForm(
+                        "status",
+                        event.target.value
+                      )
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="Upcoming">
+                      Upcoming
+                    </option>
+
+                    <option value="Ongoing">
+                      Ongoing
+                    </option>
+
+                    <option value="Completed">
+                      Completed
+                    </option>
+
+                    <option value="Cancelled">
+                      Cancelled
+                    </option>
+                  </select>
+                </div>
+
+                {/* CAPACITY */}
+
+                <div>
+                  <label className="mb-2 block text-sm font-bold text-gray-700">
+                    Registration Capacity
+                  </label>
+
+                  <div className="relative">
+
+                    <Users className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+                    <input
+                      type="number"
+                      min="1"
+                      value={
+                        form.capacity
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "capacity",
+                          event.target.value
+                        )
+                      }
+                      placeholder="Leave empty for unlimited"
+                      className="w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
+                    />
+
+                  </div>
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Leave empty if there is no participant limit.
+                  </p>
+                </div>
+
+                {/* IMAGE */}
 
                 <div>
                   <label className="mb-2 block text-sm font-bold text-gray-700">
@@ -1464,9 +2008,7 @@ export default function AdminEventsPage() {
                     ) =>
                       updateForm(
                         "image_url",
-                        event
-                          .target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="https://..."
@@ -1475,6 +2017,7 @@ export default function AdminEventsPage() {
 
                   {form.image_url && (
                     <div className="mt-3 h-40 overflow-hidden rounded-xl bg-slate-100">
+
                       <img
                         src={
                           form.image_url
@@ -1488,6 +2031,7 @@ export default function AdminEventsPage() {
                             "none";
                         }}
                       />
+
                     </div>
                   )}
                 </div>
@@ -1513,12 +2057,10 @@ export default function AdminEventsPage() {
                       ) =>
                         updateForm(
                           "registration_link",
-                          event
-                            .target
-                            .value
+                          event.target.value
                         )
                       }
-                      placeholder="https://..."
+                      placeholder="Optional external registration link"
                       className="w-full rounded-xl border border-slate-300 py-3 pl-11 pr-4 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     />
 
@@ -1541,9 +2083,7 @@ export default function AdminEventsPage() {
                       ) =>
                         updateForm(
                           "is_published",
-                          event
-                            .target
-                            .checked
+                          event.target.checked
                         )
                       }
                       className="mt-1 h-5 w-5 rounded border-gray-300 text-[#0F2B7B] focus:ring-[#0F2B7B]"
@@ -1556,12 +2096,96 @@ export default function AdminEventsPage() {
                       </p>
 
                       <p className="mt-1 text-sm leading-5 text-gray-500">
-                        Published events can be displayed on the public website. Draft events remain available only for management.
+                        Published events can appear on the public website.
                       </p>
 
                     </div>
 
                   </label>
+
+                </div>
+
+                {/* REGISTRATION */}
+
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
+
+                  <div className="flex items-start gap-3">
+
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#0F2B7B] shadow-sm">
+                      <Users className="h-5 w-5" />
+                    </div>
+
+                    <div>
+                      <h3 className="font-bold text-gray-800">
+                        Event Registration
+                      </h3>
+
+                      <p className="mt-1 text-sm leading-5 text-gray-600">
+                        Control whether volunteers can register for this event.
+                      </p>
+                    </div>
+
+                  </div>
+
+                  <label className="mt-5 flex cursor-pointer items-start gap-4 rounded-xl border border-white bg-white p-4">
+
+                    <input
+                      type="checkbox"
+                      checked={
+                        form.registration_open
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "registration_open",
+                          event.target.checked
+                        )
+                      }
+                      className="mt-1 h-5 w-5 rounded border-gray-300 text-[#0F2B7B] focus:ring-[#0F2B7B]"
+                    />
+
+                    <div>
+
+                      <p className="font-bold text-gray-800">
+                        Open registration
+                      </p>
+
+                      <p className="mt-1 text-sm leading-5 text-gray-500">
+                        Volunteers can register while registration is open and before the deadline.
+                      </p>
+
+                    </div>
+
+                  </label>
+
+                  <div className="mt-4">
+
+                    <label className="mb-2 block text-sm font-bold text-gray-700">
+                      Registration Deadline
+                    </label>
+
+                    <input
+                      type="datetime-local"
+                      value={
+                        form.registration_deadline
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateForm(
+                          "registration_deadline",
+                          event.target.value
+                        )
+                      }
+                      className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
+                    />
+
+                    <p className="mt-2 text-xs leading-5 text-gray-500">
+                      After this date and time, registration will automatically appear closed. An administrator can manually reopen it later.
+                    </p>
+
+                  </div>
 
                 </div>
 
@@ -1585,6 +2209,7 @@ export default function AdminEventsPage() {
                     disabled={saving}
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-6 py-3 text-sm font-bold text-white transition hover:bg-[#143a96] disabled:cursor-not-allowed disabled:opacity-60"
                   >
+
                     {saving && (
                       <RefreshCw className="h-4 w-4 animate-spin" />
                     )}
@@ -1596,6 +2221,7 @@ export default function AdminEventsPage() {
                       : form.is_published
                       ? "Create & Publish"
                       : "Save Draft"}
+
                   </button>
 
                 </div>
