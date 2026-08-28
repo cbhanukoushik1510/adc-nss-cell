@@ -1,6 +1,15 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import Link from "next/link";
+
 import {
   CalendarDays,
   CheckCircle,
@@ -8,16 +17,16 @@ import {
   Edit3,
   Eye,
   EyeOff,
+  ExternalLink,
+  Lock,
   MapPin,
   Plus,
   RefreshCw,
   Search,
   Trash2,
-  X,
-  ExternalLink,
-  Users,
-  Lock,
   Unlock,
+  Users,
+  X,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -29,33 +38,45 @@ import AdminDashboardLayout from "@/components/admin/AdminDashboardLayout";
 
 interface EventItem {
   id: string;
+
   title: string;
   description: string | null;
 
   event_date: string;
+
   start_time: string | null;
   end_time: string | null;
 
-  // Existing database also contains these legacy/additional fields.
   venue: string | null;
+
   image_url: string | null;
 
   status: string;
+
   capacity: number | null;
+
   participants_count: number;
 
   created_by: string | null;
+
   created_at: string;
   updated_at: string;
 
   attendance_token: string | null;
 
+  /*
+   * Older / additional event fields that already exist
+   * in your events table.
+   */
   event_time: string | null;
   event_type: string | null;
   location: string | null;
   registration_link: string | null;
   is_published: boolean | null;
 
+  /*
+   * Registration control fields.
+   */
   registration_open: boolean | null;
   registration_deadline: string | null;
 }
@@ -110,7 +131,10 @@ const emptyForm: EventForm = {
   registration_deadline: "",
 };
 
-type EventFilter = "All" | "Published" | "Draft";
+type EventFilter =
+  | "All"
+  | "Published"
+  | "Draft";
 
 /* =========================================================
    HELPERS
@@ -121,7 +145,10 @@ function getErrorMessage(error: unknown) {
     return error.message;
   }
 
-  if (typeof error === "object" && error !== null) {
+  if (
+    typeof error === "object" &&
+    error !== null
+  ) {
     const item = error as {
       message?: string;
       details?: string;
@@ -144,12 +171,17 @@ function getErrorMessage(error: unknown) {
 ========================================================= */
 
 export default function AdminEventsPage() {
-  const [events, setEvents] = useState<EventItem[]>([]);
+  const [events, setEvents] =
+    useState<EventItem[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
 
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
@@ -160,15 +192,20 @@ export default function AdminEventsPage() {
   const [registrationId, setRegistrationId] =
     useState<string | null>(null);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [search, setSearch] = useState("");
+  const [success, setSuccess] =
+    useState("");
+
+  const [search, setSearch] =
+    useState("");
 
   const [filter, setFilter] =
     useState<EventFilter>("All");
 
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] =
+    useState(false);
 
   const [editingEvent, setEditingEvent] =
     useState<EventItem | null>(null);
@@ -177,110 +214,126 @@ export default function AdminEventsPage() {
     useState<EventForm>(emptyForm);
 
   /* =======================================================
-     CHECK WHETHER REGISTRATION IS CURRENTLY OPEN
+     CHECK REGISTRATION STATUS
   ======================================================= */
 
-  const isRegistrationOpen = (
-    event: EventItem
-  ) => {
-    if (event.registration_open !== true) {
-      return false;
-    }
+  const isRegistrationOpen = useCallback(
+    (event: EventItem) => {
+      /*
+       * Registration must first be manually enabled.
+       */
+      if (event.registration_open !== true) {
+        return false;
+      }
 
-    if (!event.registration_deadline) {
-      return true;
-    }
+      /*
+       * No deadline means registration stays open
+       * until an admin manually closes it.
+       */
+      if (!event.registration_deadline) {
+        return true;
+      }
 
-    const deadline = new Date(
-      event.registration_deadline
-    ).getTime();
+      const deadline = new Date(
+        event.registration_deadline
+      ).getTime();
 
-    if (Number.isNaN(deadline)) {
-      return true;
-    }
+      /*
+       * Invalid deadline:
+       * do not accidentally close registration.
+       */
+      if (Number.isNaN(deadline)) {
+        return true;
+      }
 
-    return Date.now() < deadline;
-  };
+      /*
+       * Automatic close after deadline.
+       */
+      return Date.now() < deadline;
+    },
+    []
+  );
 
   /* =======================================================
      LOAD EVENTS
   ======================================================= */
 
-  const loadEvents = async (
-    refresh = false
-  ) => {
-    if (refresh) {
-      setRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-
-    setError("");
-
-    try {
-      const {
-        data,
-        error: eventsError,
-      } = await supabase
-        .from("events")
-        .select(`
-          id,
-          title,
-          description,
-          event_date,
-          start_time,
-          end_time,
-          venue,
-          image_url,
-          status,
-          capacity,
-          participants_count,
-          created_by,
-          created_at,
-          updated_at,
-          attendance_token,
-          event_time,
-          event_type,
-          location,
-          registration_link,
-          is_published,
-          registration_open,
-          registration_deadline
-        `)
-        .order("event_date", {
-          ascending: true,
-        })
-        .order("start_time", {
-          ascending: true,
-        });
-
-      if (eventsError) {
-        console.error(
-          "Supabase events loading error:",
-          eventsError
-        );
-
-        throw eventsError;
+  const loadEvents = useCallback(
+    async (refresh = false) => {
+      if (refresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
       }
 
-      setEvents(
-        (data ?? []) as EventItem[]
-      );
-    } catch (err) {
-      console.error(
-        "Events loading error:",
-        err
-      );
+      setError("");
 
-      setError(
-        getErrorMessage(err) ||
-          "Unable to load events."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+      try {
+        const {
+          data,
+          error: eventsError,
+        } = await supabase
+          .from("events")
+          .select(`
+            id,
+            title,
+            description,
+            event_date,
+            start_time,
+            end_time,
+            venue,
+            image_url,
+            status,
+            capacity,
+            participants_count,
+            created_by,
+            created_at,
+            updated_at,
+            attendance_token,
+            event_time,
+            event_type,
+            location,
+            registration_link,
+            is_published,
+            registration_open,
+            registration_deadline
+          `)
+          .order("event_date", {
+            ascending: true,
+          })
+          .order("start_time", {
+            ascending: true,
+          });
+
+        if (eventsError) {
+          console.error(
+            "Supabase events loading error:",
+            eventsError
+          );
+
+          throw eventsError;
+        }
+
+        setEvents(
+          (data ?? []) as EventItem[]
+        );
+      } catch (err) {
+        console.error(
+          "Events loading error:",
+          err
+        );
+
+        setError(
+          getErrorMessage(err) ||
+            "Unable to load events."
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    []
+  );
 
   /* =======================================================
      INITIAL LOAD
@@ -288,7 +341,7 @@ export default function AdminEventsPage() {
 
   useEffect(() => {
     loadEvents();
-  }, []);
+  }, [loadEvents]);
 
   /* =======================================================
      CLEAR MESSAGES
@@ -300,7 +353,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     OPEN CREATE
+     CREATE FORM
   ======================================================= */
 
   const openCreateForm = () => {
@@ -316,7 +369,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     OPEN EDIT
+     EDIT FORM
   ======================================================= */
 
   const openEditForm = (
@@ -334,28 +387,28 @@ export default function AdminEventsPage() {
       );
 
       if (!Number.isNaN(date.getTime())) {
-        const localYear =
+        const year =
           date.getFullYear();
 
-        const localMonth = String(
+        const month = String(
           date.getMonth() + 1
         ).padStart(2, "0");
 
-        const localDay = String(
+        const day = String(
           date.getDate()
         ).padStart(2, "0");
 
-        const localHours = String(
+        const hours = String(
           date.getHours()
         ).padStart(2, "0");
 
-        const localMinutes = String(
+        const minutes = String(
           date.getMinutes()
         ).padStart(2, "0");
 
         deadline =
-          `${localYear}-${localMonth}-${localDay}` +
-          `T${localHours}:${localMinutes}`;
+          `${year}-${month}-${day}` +
+          `T${hours}:${minutes}`;
       }
     }
 
@@ -478,32 +531,7 @@ export default function AdminEventsPage() {
       return;
     }
 
-    if (
-      form.registration_open &&
-      form.registration_deadline
-    ) {
-      const deadline = new Date(
-        form.registration_deadline
-      ).getTime();
-
-      if (
-        Number.isNaN(deadline)
-      ) {
-        setError(
-          "Please enter a valid registration deadline."
-        );
-        return;
-      }
-
-      if (
-        deadline <= Date.now()
-      ) {
-        setError(
-          "Registration deadline must be in the future when opening registration."
-        );
-        return;
-      }
-    }
+    /* Validate capacity */
 
     let capacity: number | null = null;
 
@@ -525,38 +553,45 @@ export default function AdminEventsPage() {
       capacity = parsed;
     }
 
+    /* Validate registration deadline */
+
+    let registrationDeadline:
+      | string
+      | null = null;
+
+    if (form.registration_deadline) {
+      const deadlineDate = new Date(
+        form.registration_deadline
+      );
+
+      if (
+        Number.isNaN(
+          deadlineDate.getTime()
+        )
+      ) {
+        setError(
+          "Please enter a valid registration deadline."
+        );
+        return;
+      }
+
+      if (
+        form.registration_open &&
+        deadlineDate.getTime() <= Date.now()
+      ) {
+        setError(
+          "Registration deadline must be in the future when opening registration."
+        );
+        return;
+      }
+
+      registrationDeadline =
+        deadlineDate.toISOString();
+    }
+
     setSaving(true);
 
     try {
-      /*
-       * IMPORTANT:
-       * We use the actual database columns.
-       *
-       * Registration deadline is stored as ISO timestamp.
-       */
-
-      let registrationDeadline:
-        | string
-        | null = null;
-
-      if (
-        form.registration_deadline
-      ) {
-        const deadlineDate =
-          new Date(
-            form.registration_deadline
-          );
-
-        if (
-          !Number.isNaN(
-            deadlineDate.getTime()
-          )
-        ) {
-          registrationDeadline =
-            deadlineDate.toISOString();
-        }
-      }
-
       const payload = {
         title:
           form.title.trim(),
@@ -575,10 +610,12 @@ export default function AdminEventsPage() {
           form.end_time || null,
 
         venue:
-          form.venue.trim() || null,
+          form.venue.trim() ||
+          null,
 
         image_url:
-          form.image_url.trim() || null,
+          form.image_url.trim() ||
+          null,
 
         registration_link:
           form.registration_link.trim() ||
@@ -589,11 +626,6 @@ export default function AdminEventsPage() {
 
         capacity,
 
-        /*
-         * Keep participants count unchanged.
-         * For a newly-created event it will start at 0
-         * if the database default is configured.
-         */
         is_published:
           form.is_published,
 
@@ -631,8 +663,8 @@ export default function AdminEventsPage() {
             ...payload,
 
             /*
-             * Make sure a newly created event
-             * starts with zero participants.
+             * New events always start with
+             * zero registered participants.
              */
             participants_count: 0,
           });
@@ -667,7 +699,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     DELETE
+     DELETE EVENT
   ======================================================= */
 
   const handleDelete = async (
@@ -741,9 +773,13 @@ export default function AdminEventsPage() {
       } = await supabase
         .from("events")
         .update({
-          is_published: newStatus,
+          is_published:
+            newStatus,
         })
-        .eq("id", event.id);
+        .eq(
+          "id",
+          event.id
+        );
 
       if (updateError) {
         throw updateError;
@@ -782,7 +818,7 @@ export default function AdminEventsPage() {
   };
 
   /* =======================================================
-     MANUAL REGISTRATION OPEN/CLOSE
+     OPEN / CLOSE REGISTRATION
   ======================================================= */
 
   const toggleRegistration = async (
@@ -797,11 +833,7 @@ export default function AdminEventsPage() {
         isRegistrationOpen(event);
 
       /*
-       * If registration is currently open,
-       * manually close it.
-       *
-       * We keep the deadline because it is useful
-       * historical information.
+       * CLOSE
        */
       if (currentlyOpen) {
         const {
@@ -809,9 +841,13 @@ export default function AdminEventsPage() {
         } = await supabase
           .from("events")
           .update({
-            registration_open: false,
+            registration_open:
+              false,
           })
-          .eq("id", event.id);
+          .eq(
+            "id",
+            event.id
+          );
 
         if (updateError) {
           throw updateError;
@@ -832,21 +868,26 @@ export default function AdminEventsPage() {
         setSuccess(
           "Event registration closed manually."
         );
-      } else {
-        /*
-         * Manual reopening.
-         *
-         * If the old deadline has already passed,
-         * remove it. This means the event remains
-         * open until an administrator closes it
-         * or sets a new deadline.
-         */
+      }
+
+      /*
+       * OPEN / REOPEN
+       */
+      else {
         const deadlinePassed =
           event.registration_deadline &&
           new Date(
             event.registration_deadline
           ).getTime() <= Date.now();
 
+        /*
+         * If the old deadline has expired,
+         * remove it during manual reopening.
+         *
+         * This allows the admin to reopen the
+         * registration without an old expired
+         * deadline immediately closing it again.
+         */
         const newDeadline =
           deadlinePassed
             ? null
@@ -857,11 +898,16 @@ export default function AdminEventsPage() {
         } = await supabase
           .from("events")
           .update({
-            registration_open: true,
+            registration_open:
+              true,
+
             registration_deadline:
               newDeadline,
           })
-          .eq("id", event.id);
+          .eq(
+            "id",
+            event.id
+          );
 
         if (updateError) {
           throw updateError;
@@ -872,8 +918,10 @@ export default function AdminEventsPage() {
             item.id === event.id
               ? {
                   ...item,
+
                   registration_open:
                     true,
+
                   registration_deadline:
                     newDeadline,
                 }
@@ -883,7 +931,7 @@ export default function AdminEventsPage() {
 
         setSuccess(
           deadlinePassed
-            ? "Registration reopened manually. It is now open without a deadline."
+            ? "Registration reopened manually without the old deadline."
             : "Event registration opened successfully."
         );
       }
@@ -922,7 +970,7 @@ export default function AdminEventsPage() {
     ).length;
 
   /* =======================================================
-     FILTERED EVENTS
+     FILTER EVENTS
   ======================================================= */
 
   const filteredEvents =
@@ -935,7 +983,8 @@ export default function AdminEventsPage() {
       return events.filter(
         (event) => {
           if (
-            filter === "Published" &&
+            filter ===
+              "Published" &&
             event.is_published !== true
           ) {
             return false;
@@ -1088,7 +1137,9 @@ export default function AdminEventsPage() {
     <AdminDashboardLayout>
       <div className="mx-auto w-full max-w-7xl space-y-6">
 
-        {/* HEADER */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
@@ -1135,7 +1186,9 @@ export default function AdminEventsPage() {
 
             <button
               type="button"
-              onClick={openCreateForm}
+              onClick={
+                openCreateForm
+              }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#143a96]"
             >
               <Plus className="h-5 w-5" />
@@ -1146,7 +1199,9 @@ export default function AdminEventsPage() {
           </div>
         </div>
 
-        {/* SUCCESS */}
+        {/* =================================================
+            SUCCESS
+        ================================================= */}
 
         {success && (
           <div className="flex items-center justify-between rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-green-800">
@@ -1174,7 +1229,9 @@ export default function AdminEventsPage() {
           </div>
         )}
 
-        {/* ERROR */}
+        {/* =================================================
+            ERROR
+        ================================================= */}
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
@@ -1201,10 +1258,13 @@ export default function AdminEventsPage() {
               </button>
 
             </div>
+
           </div>
         )}
 
-        {/* STATISTICS */}
+        {/* =================================================
+            STATISTICS
+        ================================================= */}
 
         <div className="grid gap-4 sm:grid-cols-3">
 
@@ -1240,9 +1300,13 @@ export default function AdminEventsPage() {
 
         </div>
 
-        {/* EVENTS */}
+        {/* =================================================
+            EVENTS SECTION
+        ================================================= */}
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
+
+          {/* SECTION HEADER */}
 
           <div className="border-b border-slate-200 p-5 sm:p-6">
 
@@ -1278,6 +1342,8 @@ export default function AdminEventsPage() {
 
             </div>
 
+            {/* FILTERS */}
+
             <div className="mt-5 flex flex-wrap gap-2">
 
               {(
@@ -1286,53 +1352,54 @@ export default function AdminEventsPage() {
                   "Published",
                   "Draft",
                 ] as EventFilter[]
-              ).map(
-                (item) => {
+              ).map((item) => {
 
-                  const count =
-                    item === "All"
-                      ? totalCount
-                      : item ===
-                        "Published"
-                      ? publishedCount
-                      : draftCount;
+                const count =
+                  item === "All"
+                    ? totalCount
+                    : item ===
+                      "Published"
+                    ? publishedCount
+                    : draftCount;
 
-                  const active =
-                    filter === item;
+                const active =
+                  filter === item;
 
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() =>
-                        setFilter(item)
-                      }
-                      className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    onClick={() =>
+                      setFilter(item)
+                    }
+                    className={`rounded-xl px-4 py-2.5 text-sm font-bold transition ${
+                      active
+                        ? "bg-[#0F2B7B] text-white"
+                        : "bg-slate-100 text-gray-600 hover:bg-slate-200"
+                    }`}
+                  >
+                    {item}
+
+                    <span
+                      className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
                         active
-                          ? "bg-[#0F2B7B] text-white"
-                          : "bg-slate-100 text-gray-600 hover:bg-slate-200"
+                          ? "bg-white/15"
+                          : "bg-white"
                       }`}
                     >
-                      {item}
-
-                      <span
-                        className={`ml-2 rounded-full px-2 py-0.5 text-xs ${
-                          active
-                            ? "bg-white/15"
-                            : "bg-white"
-                        }`}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                  );
-                }
-              )}
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
 
             </div>
+
           </div>
 
-          {/* LOADING */}
+          {/* =================================================
+              LOADING
+          ================================================= */}
 
           {loading ? (
             <div className="p-14 text-center">
@@ -1346,7 +1413,9 @@ export default function AdminEventsPage() {
             </div>
           ) : filteredEvents.length === 0 ? (
 
-            /* EMPTY */
+            /* =================================================
+               EMPTY
+            ================================================= */
 
             <div className="p-14 text-center">
 
@@ -1361,8 +1430,7 @@ export default function AdminEventsPage() {
               <p className="mt-2 text-sm text-gray-500">
                 {search
                   ? "No events match your search."
-                  : filter ===
-                    "Published"
+                  : filter === "Published"
                   ? "There are no published events."
                   : filter === "Draft"
                   ? "There are no draft events."
@@ -1387,7 +1455,9 @@ export default function AdminEventsPage() {
             </div>
           ) : (
 
-            /* EVENT LIST */
+            /* =================================================
+               EVENT LIST
+            ================================================= */
 
             <div className="divide-y divide-slate-200">
 
@@ -1399,6 +1469,10 @@ export default function AdminEventsPage() {
                       event
                     );
 
+                  const registeredCount =
+                    event.participants_count ||
+                    0;
+
                   return (
                     <article
                       key={event.id}
@@ -1407,9 +1481,13 @@ export default function AdminEventsPage() {
 
                       <div className="flex flex-col gap-5">
 
-                        <div className="flex flex-col gap-5 xl:flex-row xl:items-center">
+                        {/* =================================================
+                           MAIN EVENT ROW
+                        ================================================= */}
 
-                          {/* IMAGE */}
+                        <div className="flex flex-col gap-5 xl:flex-row xl:items-start">
+
+                          {/* EVENT IMAGE */}
 
                           <div className="h-28 w-full shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:h-32 sm:w-48">
 
@@ -1431,7 +1509,7 @@ export default function AdminEventsPage() {
 
                           </div>
 
-                          {/* INFO */}
+                          {/* EVENT INFO */}
 
                           <div className="min-w-0 flex-1">
 
@@ -1471,6 +1549,8 @@ export default function AdminEventsPage() {
 
                             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-gray-500">
 
+                              {/* DATE */}
+
                               <span className="inline-flex items-center gap-2">
                                 <CalendarDays className="h-4 w-4 text-[#0F2B7B]" />
 
@@ -1478,6 +1558,8 @@ export default function AdminEventsPage() {
                                   event.event_date
                                 )}
                               </span>
+
+                              {/* TIME */}
 
                               {(event.start_time ||
                                 event.event_time) && (
@@ -1496,6 +1578,8 @@ export default function AdminEventsPage() {
                                 </span>
                               )}
 
+                              {/* VENUE */}
+
                               {(event.venue ||
                                 event.location) && (
                                 <span className="inline-flex items-center gap-2">
@@ -1506,14 +1590,17 @@ export default function AdminEventsPage() {
                                 </span>
                               )}
 
+                              {/* REGISTERED */}
+
                               <span className="inline-flex items-center gap-2">
                                 <Users className="h-4 w-4 text-gray-400" />
 
-                                {event.participants_count || 0}
+                                {registeredCount}
 
                                 {event.capacity
                                   ? ` / ${event.capacity}`
-                                  : ""}{" "}
+                                  : ""}
+
                                 registered
                               </span>
 
@@ -1521,126 +1608,170 @@ export default function AdminEventsPage() {
 
                           </div>
 
-                          {/* ACTIONS */}
+                          {/* =================================================
+                             ACTION BUTTONS
+                          ================================================= */}
 
-                          <div className="flex flex-wrap gap-2 xl:w-[390px] xl:justify-end">
+                          <div className="w-full shrink-0 xl:w-[340px]">
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                togglePublish(
-                                  event
-                                )
-                              }
-                              disabled={
-                                publishingId ===
-                                event.id
-                              }
-                              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                                event.is_published ===
-                                true
-                                  ? "border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
-                                  : "bg-green-600 text-white hover:bg-green-700"
-                              }`}
-                            >
-                              {publishingId ===
-                              event.id ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                              ) : event.is_published ===
-                                true ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
+                            <div className="grid grid-cols-2 gap-2">
 
-                              {event.is_published ===
-                              true
-                                ? "Unpublish"
-                                : "Publish"}
-                            </button>
+                              {/* PUBLISH */}
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                toggleRegistration(
-                                  event
-                                )
-                              }
-                              disabled={
-                                registrationId ===
-                                event.id
-                              }
-                              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                                registrationOpen
-                                  ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
-                                  : "bg-blue-600 text-white hover:bg-blue-700"
-                              }`}
-                            >
-                              {registrationId ===
-                              event.id ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                              ) : registrationOpen ? (
-                                <Lock className="h-4 w-4" />
-                              ) : (
-                                <Unlock className="h-4 w-4" />
-                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  togglePublish(
+                                    event
+                                  )
+                                }
+                                disabled={
+                                  publishingId ===
+                                  event.id
+                                }
+                                className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  event.is_published ===
+                                  true
+                                    ? "border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100"
+                                    : "bg-green-600 text-white hover:bg-green-700"
+                                }`}
+                              >
+                                {publishingId ===
+                                event.id ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : event.is_published ===
+                                  true ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
 
-                              {registrationOpen
-                                ? "Close Registration"
-                                : "Open Registration"}
-                            </button>
+                                <span className="hidden sm:inline">
+                                  {event.is_published ===
+                                  true
+                                    ? "Unpublish"
+                                    : "Publish"}
+                                </span>
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openEditForm(
-                                  event
-                                )
-                              }
-                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-slate-50"
-                            >
-                              <Edit3 className="h-4 w-4" />
+                                <span className="sm:hidden">
+                                  {event.is_published ===
+                                  true
+                                    ? "Unpublish"
+                                    : "Publish"}
+                                </span>
+                              </button>
 
-                              Edit
-                            </button>
+                              {/* REGISTRATIONS - NEW */}
 
-                            <button
-                              type="button"
-                              onClick={() =>
-                                handleDelete(
-                                  event
-                                )
-                              }
-                              disabled={
-                                deletingId ===
-                                event.id
-                              }
-                              className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:opacity-60"
-                            >
-                              {deletingId ===
-                              event.id ? (
-                                <RefreshCw className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
+                              <Link
+                                href={`/admin/events/${event.id}/registrations`}
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#0F2B7B]/20 bg-[#0F2B7B] px-3 py-2.5 text-sm font-bold text-white transition hover:bg-[#143a96]"
+                              >
+                                <Users className="h-4 w-4" />
 
-                              Delete
-                            </button>
+                                <span>
+                                  Registrations
+                                </span>
+
+                                <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs">
+                                  {registeredCount}
+                                </span>
+                              </Link>
+
+                              {/* OPEN / CLOSE */}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  toggleRegistration(
+                                    event
+                                  )
+                                }
+                                disabled={
+                                  registrationId ===
+                                  event.id
+                                }
+                                className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                  registrationOpen
+                                    ? "border border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                                    : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                }`}
+                              >
+                                {registrationId ===
+                                event.id ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : registrationOpen ? (
+                                  <Lock className="h-4 w-4" />
+                                ) : (
+                                  <Unlock className="h-4 w-4" />
+                                )}
+
+                                {registrationOpen
+                                  ? "Close Registration"
+                                  : "Open Registration"}
+                              </button>
+
+                              {/* EDIT */}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openEditForm(
+                                    event
+                                  )
+                                }
+                                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold text-gray-700 transition hover:bg-slate-50"
+                              >
+                                <Edit3 className="h-4 w-4" />
+
+                                Edit
+                              </button>
+
+                              {/* DELETE */}
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleDelete(
+                                    event
+                                  )
+                                }
+                                disabled={
+                                  deletingId ===
+                                  event.id
+                                }
+                                className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm font-bold text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {deletingId ===
+                                event.id ? (
+                                  <RefreshCw className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+
+                                Delete Event
+                              </button>
+
+                            </div>
 
                           </div>
 
                         </div>
 
-                        {/* REGISTRATION STATUS */}
+                        {/* =================================================
+                           REGISTRATION STATUS CARD
+                        ================================================= */}
 
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
 
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+
+                            {/* STATUS */}
 
                             <div className="flex items-center gap-3">
 
                               <div
-                                className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
                                   registrationOpen
                                     ? "bg-green-100 text-green-700"
                                     : "bg-red-100 text-red-700"
@@ -1674,25 +1805,44 @@ export default function AdminEventsPage() {
 
                             </div>
 
-                            <div className="text-sm text-gray-500">
+                            {/* REGISTERED INFO */}
 
-                              <span className="font-semibold text-gray-700">
-                                {event.participants_count ||
-                                  0}
-                              </span>
+                            <div className="flex items-center justify-between gap-4 sm:justify-end">
 
-                              {" "}registered
+                              <div className="text-sm text-gray-500">
 
-                              {event.capacity && (
-                                <>
-                                  {" "}of{" "}
-                                  <span className="font-semibold text-gray-700">
-                                    {
-                                      event.capacity
-                                    }
-                                  </span>
-                                </>
-                              )}
+                                <span className="font-bold text-gray-800">
+                                  {
+                                    registeredCount
+                                  }
+                                </span>
+
+                                {" "}registered
+
+                                {event.capacity && (
+                                  <>
+                                    {" "}of{" "}
+
+                                    <span className="font-bold text-gray-800">
+                                      {
+                                        event.capacity
+                                      }
+                                    </span>
+                                  </>
+                                )}
+
+                              </div>
+
+                              {/* QUICK REGISTRATIONS LINK */}
+
+                              <Link
+                                href={`/admin/events/${event.id}/registrations`}
+                                className="inline-flex items-center gap-2 rounded-xl border border-[#0F2B7B]/20 bg-white px-4 py-2.5 text-sm font-bold text-[#0F2B7B] transition hover:bg-blue-50"
+                              >
+                                <Users className="h-4 w-4" />
+
+                                View List
+                              </Link>
 
                             </div>
 
@@ -1726,6 +1876,7 @@ export default function AdminEventsPage() {
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-5">
 
                 <div>
+
                   <h2 className="text-xl font-bold text-[#0F2B7B]">
                     {editingEvent
                       ? "Edit Event"
@@ -1737,6 +1888,7 @@ export default function AdminEventsPage() {
                       ? "Update the event information below."
                       : "Add a new NSS event to the system."}
                   </p>
+
                 </div>
 
                 <button
@@ -1764,6 +1916,7 @@ export default function AdminEventsPage() {
                 {/* TITLE */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Event Title{" "}
                     <span className="text-red-500">
@@ -1788,11 +1941,13 @@ export default function AdminEventsPage() {
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     required
                   />
+
                 </div>
 
                 {/* DESCRIPTION */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Description
                   </label>
@@ -1813,6 +1968,7 @@ export default function AdminEventsPage() {
                     placeholder="Describe the event..."
                     className="w-full resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   />
+
                 </div>
 
                 {/* DATE / TIMES */}
@@ -1820,6 +1976,7 @@ export default function AdminEventsPage() {
                 <div className="grid gap-5 sm:grid-cols-3">
 
                   <div>
+
                     <label className="mb-2 block text-sm font-bold text-gray-700">
                       Event Date{" "}
                       <span className="text-red-500">
@@ -1843,9 +2000,11 @@ export default function AdminEventsPage() {
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                       required
                     />
+
                   </div>
 
                   <div>
+
                     <label className="mb-2 block text-sm font-bold text-gray-700">
                       Start Time
                     </label>
@@ -1865,9 +2024,11 @@ export default function AdminEventsPage() {
                       }
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     />
+
                   </div>
 
                   <div>
+
                     <label className="mb-2 block text-sm font-bold text-gray-700">
                       End Time
                     </label>
@@ -1887,6 +2048,7 @@ export default function AdminEventsPage() {
                       }
                       className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     />
+
                   </div>
 
                 </div>
@@ -1894,6 +2056,7 @@ export default function AdminEventsPage() {
                 {/* VENUE */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Venue
                   </label>
@@ -1914,11 +2077,13 @@ export default function AdminEventsPage() {
                     placeholder="Example: ADC Auditorium"
                     className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   />
+
                 </div>
 
                 {/* STATUS */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Event Status
                   </label>
@@ -1937,6 +2102,7 @@ export default function AdminEventsPage() {
                     }
                     className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                   >
+
                     <option value="Upcoming">
                       Upcoming
                     </option>
@@ -1952,12 +2118,15 @@ export default function AdminEventsPage() {
                     <option value="Cancelled">
                       Cancelled
                     </option>
+
                   </select>
+
                 </div>
 
                 {/* CAPACITY */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Registration Capacity
                   </label>
@@ -1989,11 +2158,13 @@ export default function AdminEventsPage() {
                   <p className="mt-2 text-xs text-gray-500">
                     Leave empty if there is no participant limit.
                   </p>
+
                 </div>
 
-                {/* IMAGE */}
+                {/* IMAGE URL */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
                     Event Image URL
                   </label>
@@ -2034,13 +2205,15 @@ export default function AdminEventsPage() {
 
                     </div>
                   )}
+
                 </div>
 
                 {/* REGISTRATION LINK */}
 
                 <div>
+
                   <label className="mb-2 block text-sm font-bold text-gray-700">
-                    Registration Link
+                    External Registration Link
                   </label>
 
                   <div className="relative">
@@ -2065,6 +2238,11 @@ export default function AdminEventsPage() {
                     />
 
                   </div>
+
+                  <p className="mt-2 text-xs text-gray-500">
+                    Your internal NSS registration page will still use the event ID. This field is only for an optional external registration URL.
+                  </p>
+
                 </div>
 
                 {/* PUBLISH */}
@@ -2096,7 +2274,7 @@ export default function AdminEventsPage() {
                       </p>
 
                       <p className="mt-1 text-sm leading-5 text-gray-500">
-                        Published events can appear on the public website.
+                        Published events can appear on the public website and Upcoming Events section.
                       </p>
 
                     </div>
@@ -2105,7 +2283,9 @@ export default function AdminEventsPage() {
 
                 </div>
 
-                {/* REGISTRATION */}
+                {/* =================================================
+                    REGISTRATION CONTROL
+                ================================================= */}
 
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
 
@@ -2116,6 +2296,7 @@ export default function AdminEventsPage() {
                     </div>
 
                     <div>
+
                       <h3 className="font-bold text-gray-800">
                         Event Registration
                       </h3>
@@ -2123,9 +2304,12 @@ export default function AdminEventsPage() {
                       <p className="mt-1 text-sm leading-5 text-gray-600">
                         Control whether volunteers can register for this event.
                       </p>
+
                     </div>
 
                   </div>
+
+                  {/* OPEN REGISTRATION */}
 
                   <label className="mt-5 flex cursor-pointer items-start gap-4 rounded-xl border border-white bg-white p-4">
 
@@ -2159,6 +2343,8 @@ export default function AdminEventsPage() {
 
                   </label>
 
+                  {/* DEADLINE */}
+
                   <div className="mt-4">
 
                     <label className="mb-2 block text-sm font-bold text-gray-700">
@@ -2182,14 +2368,16 @@ export default function AdminEventsPage() {
                     />
 
                     <p className="mt-2 text-xs leading-5 text-gray-500">
-                      After this date and time, registration will automatically appear closed. An administrator can manually reopen it later.
+                      When this deadline passes, registration is automatically treated as closed. An admin can manually reopen registration.
                     </p>
 
                   </div>
 
                 </div>
 
-                {/* ACTIONS */}
+                {/* =================================================
+                    ACTIONS
+                ================================================= */}
 
                 <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
 
@@ -2227,7 +2415,9 @@ export default function AdminEventsPage() {
                 </div>
 
               </form>
+
             </div>
+
           </div>
         )}
 

@@ -19,12 +19,6 @@ export default function Location() {
 
           </h2>
 
-          <p className="mt-4 text-lg text-gray-600">
-
-            Google Maps integration will be added here.
-
-          </p>
-
         </div>
 
         <div className="mt-10 flex h-96 items-center justify-center rounded-3xl bg-slate-100">

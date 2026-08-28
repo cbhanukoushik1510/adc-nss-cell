@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
 export default function LoginPage() {
@@ -11,6 +12,8 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -23,7 +26,7 @@ export default function LoginPage() {
 
     try {
       /* --------------------------------
-         1. Login with Supabase Auth
+         1. LOGIN WITH SUPABASE AUTH
       -------------------------------- */
 
       const { data, error: loginError } =
@@ -37,16 +40,20 @@ export default function LoginPage() {
         return;
       }
 
+      const userId = data.user.id;
+
       /* --------------------------------
-         2. Check Admin
+         2. CHECK ADMIN
       -------------------------------- */
 
-      const { data: adminUser, error: adminError } =
-        await supabase
-          .from("admin_users")
-          .select("user_id")
-          .eq("user_id", data.user.id)
-          .maybeSingle();
+      const {
+        data: adminUser,
+        error: adminError,
+      } = await supabase
+        .from("admin_users")
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle();
 
       if (adminError) {
         console.error("Admin check error:", adminError);
@@ -71,15 +78,92 @@ export default function LoginPage() {
       }
 
       /* --------------------------------
-         4. Find Volunteer Profile
+         4. CHECK PRINCIPAL / VP
       -------------------------------- */
 
-      const { data: volunteer, error: volunteerError } =
-        await supabase
-          .from("volunteers")
-          .select("id, full_name, status")
-          .eq("auth_user_id", data.user.id)
-          .maybeSingle();
+      const {
+        data: authorityUser,
+        error: authorityError,
+      } = await supabase
+        .from("authority")
+        .select(
+          `
+            id,
+            user_id,
+            full_name,
+            role,
+            designation,
+            is_active
+          `
+        )
+        .eq("user_id", userId)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (authorityError) {
+        console.error(
+          "Authority check error:",
+          authorityError
+        );
+
+        await supabase.auth.signOut();
+
+        setError(
+          "Unable to verify your authority account. Please try again."
+        );
+
+        return;
+      }
+
+      /* --------------------------------
+         5. PRINCIPAL / VICE PRINCIPAL
+      -------------------------------- */
+
+      if (authorityUser) {
+        const role = String(
+          authorityUser.role || ""
+        ).toLowerCase();
+
+        const designation = String(
+          authorityUser.designation || ""
+        ).toLowerCase();
+
+        const isPrincipal =
+          role.includes("principal") &&
+          !role.includes("vice");
+
+        const isVicePrincipal =
+          role.includes("vice principal") ||
+          designation.includes("vice principal") ||
+          role.includes("vp");
+
+        if (isPrincipal || isVicePrincipal) {
+          router.replace("/authority");
+          router.refresh();
+          return;
+        }
+
+        await supabase.auth.signOut();
+
+        setError(
+          "Your authority role is not authorized for this dashboard."
+        );
+
+        return;
+      }
+
+      /* --------------------------------
+         6. FIND VOLUNTEER PROFILE
+      -------------------------------- */
+
+      const {
+        data: volunteer,
+        error: volunteerError,
+      } = await supabase
+        .from("volunteers")
+        .select("id, full_name, status")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
 
       if (volunteerError) {
         console.error(
@@ -97,7 +181,7 @@ export default function LoginPage() {
       }
 
       /* --------------------------------
-         5. No Volunteer Profile
+         7. NO VOLUNTEER PROFILE
       -------------------------------- */
 
       if (!volunteer) {
@@ -111,7 +195,7 @@ export default function LoginPage() {
       }
 
       /* --------------------------------
-         6. REJECTED
+         8. REJECTED
       -------------------------------- */
 
       if (volunteer.status === "Rejected") {
@@ -125,7 +209,7 @@ export default function LoginPage() {
       }
 
       /* --------------------------------
-         7. PENDING
+         9. PENDING
       -------------------------------- */
 
       if (volunteer.status === "Pending") {
@@ -139,7 +223,7 @@ export default function LoginPage() {
       }
 
       /* --------------------------------
-         8. APPROVED
+         10. APPROVED VOLUNTEER
       -------------------------------- */
 
       if (volunteer.status === "Approved") {
@@ -149,7 +233,7 @@ export default function LoginPage() {
       }
 
       /* --------------------------------
-         9. Unknown Status
+         11. UNKNOWN STATUS
       -------------------------------- */
 
       await supabase.auth.signOut();
@@ -170,15 +254,13 @@ export default function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[#0F2B7B] to-[#1C4ED8] px-6">
-
       <div className="grid w-full max-w-6xl overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid-cols-2">
 
         {/* --------------------------------
-            Left Side
+            LEFT SIDE
         -------------------------------- */}
 
         <div className="hidden flex-col items-center justify-center bg-[#0F2B7B] p-12 text-white lg:flex">
-
           <Image
             src="/logos/nss-logo.png"
             alt="NSS Logo"
@@ -196,19 +278,17 @@ export default function LoginPage() {
             Login to manage your attendance, events,
             certificates and volunteer activities.
           </p>
-
         </div>
 
         {/* --------------------------------
-            Right Side
+            RIGHT SIDE
         -------------------------------- */}
 
         <div className="p-10 lg:p-14">
 
-          {/* Logo */}
+          {/* LOGO */}
 
           <div className="flex justify-center">
-
             <Image
               src="/logos/aurora-logo.png"
               alt="Aurora Logo"
@@ -216,10 +296,9 @@ export default function LoginPage() {
               height={90}
               className="rounded-full bg-white p-2 shadow-lg"
             />
-
           </div>
 
-          {/* Heading */}
+          {/* HEADING */}
 
           <h2 className="mt-6 text-center text-3xl font-bold text-[#0F2B7B]">
             NSS Member Login
@@ -229,9 +308,7 @@ export default function LoginPage() {
             Aurora&apos;s Degree & PG College NSS Cell
           </p>
 
-          {/* --------------------------------
-              Error Message
-          -------------------------------- */}
+          {/* ERROR */}
 
           {error && (
             <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 text-center text-sm font-medium leading-6 text-red-700">
@@ -239,19 +316,16 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* --------------------------------
-              Login Form
-          -------------------------------- */}
+          {/* LOGIN FORM */}
 
           <form
             onSubmit={handleLogin}
             className="mt-8 space-y-6"
           >
 
-            {/* Email */}
+            {/* EMAIL */}
 
             <div>
-
               <label
                 htmlFor="email"
                 className="font-medium text-gray-700"
@@ -272,13 +346,11 @@ export default function LoginPage() {
                 placeholder="Enter your email"
                 className="mt-2 w-full rounded-xl border border-gray-300 p-4 outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
               />
-
             </div>
 
-            {/* Password */}
+            {/* PASSWORD */}
 
             <div>
-
               <label
                 htmlFor="password"
                 className="font-medium text-gray-700"
@@ -286,23 +358,54 @@ export default function LoginPage() {
                 Password
               </label>
 
-              <input
-                id="password"
-                type="password"
-                required
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError("");
-                }}
-                placeholder="Enter your password"
-                className="mt-2 w-full rounded-xl border border-gray-300 p-4 outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
-              />
+              <div className="relative mt-2">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError("");
+                  }}
+                  placeholder="Enter your password"
+                  className="w-full rounded-xl border border-gray-300 p-4 pr-12 outline-none transition focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
+                />
 
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowPassword((prev) => !prev)
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-[#0F2B7B]"
+                  aria-label={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                  title={
+                    showPassword
+                      ? "Hide password"
+                      : "Show password"
+                  }
+                >
+                  {showPassword ? (
+                    <EyeOff
+                      size={21}
+                      strokeWidth={2}
+                    />
+                  ) : (
+                    <Eye
+                      size={21}
+                      strokeWidth={2}
+                    />
+                  )}
+                </button>
+              </div>
             </div>
 
-            {/* Login Button */}
+            {/* LOGIN BUTTON */}
 
             <button
               type="submit"
@@ -311,28 +414,21 @@ export default function LoginPage() {
             >
               {loading ? "Logging in..." : "Login"}
             </button>
-
           </form>
 
-          {/* --------------------------------
-              Back Home
-          -------------------------------- */}
+          {/* BACK HOME */}
 
           <div className="mt-8 text-center">
-
             <Link
               href="/"
               className="text-[#0F2B7B] hover:underline"
             >
               ← Back to Home
             </Link>
-
           </div>
 
         </div>
-
       </div>
-
     </main>
   );
 }
