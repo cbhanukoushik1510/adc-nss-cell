@@ -4,26 +4,26 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ShieldCheck,
-  MessageSquare,
-  Search,
-  RefreshCw,
+  ArrowLeft,
+  Check,
+  CheckCheck,
+  ChevronRight,
+  Inbox,
   LogOut,
   Menu,
-  X,
-  ChevronRight,
-  CalendarDays,
+  MessageCircle,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Send,
+  ShieldCheck,
   Users,
-  ClipboardCheck,
-  UserCheck,
-  Inbox,
-  Clock,
-  User,
-  ArrowLeft,
+  X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 
@@ -42,66 +42,76 @@ type Authority = {
   is_active: boolean;
 };
 
-type ActivityMessage = {
+type CommunicationMessage = {
   id: string;
-  activity_id: string;
   sender_id: string;
   receiver_id: string;
   message: string;
+  is_read: boolean;
+  read_at: string | null;
   created_at: string;
+  updated_at: string;
 };
 
-type Volunteer = {
-  id: string;
-  full_name: string;
-  roll_number: string;
-  department: string;
-  course: string | null;
-  year: string;
-  section: string | null;
-  college_email: string;
-  mobile_number: string;
-  photo_url: string | null;
-};
-
-type Activity = {
-  id: string;
-  title: string | null;
-  description: string | null;
+type Conversation = {
+  person: Authority;
+  messages: CommunicationMessage[];
+  lastMessage: CommunicationMessage | null;
+  unreadCount: number;
 };
 
 /* =========================================================
    HELPERS
 ========================================================= */
 
-function formatDateTime(value: string) {
-  const date = new Date(value);
+function formatMessageTime(dateString: string) {
+  const date = new Date(dateString);
 
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
+  if (Number.isNaN(date.getTime())) return "";
 
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+  return date.toLocaleTimeString("en-IN", {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
+function formatMessageDate(dateString: string) {
+  const date = new Date(dateString);
 
-  if (Number.isNaN(date.getTime())) {
-    return "-";
+  if (Number.isNaN(date.getTime())) return "";
+
+  const today = new Date();
+
+  const sameDay =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  if (sameDay) {
+    return formatMessageTime(dateString);
   }
 
   return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
-    year: "numeric",
   });
+}
+
+function getRoleLabel(person: Authority) {
+  return person.designation || person.role || "NSS Staff";
+}
+
+function getInitials(name: string) {
+  const parts = name.trim().split(/\s+/);
+
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+
+  return (
+    parts[0].charAt(0) +
+    parts[parts.length - 1].charAt(0)
+  ).toUpperCase();
 }
 
 /* =========================================================
@@ -114,293 +124,602 @@ export default function AuthorityMessagesPage() {
   const [authority, setAuthority] =
     useState<Authority | null>(null);
 
-  const [messages, setMessages] =
-    useState<ActivityMessage[]>([]);
+  const [staff, setStaff] = useState<Authority[]>([]);
+  const [messages, setMessages] = useState<
+    CommunicationMessage[]
+  >([]);
 
-  const [volunteers, setVolunteers] =
-    useState<Record<string, Volunteer>>({});
+  const [selectedUserId, setSelectedUserId] =
+    useState<string | null>(null);
 
-  const [activities, setActivities] =
-    useState<Record<string, Activity>>({});
-
+  const [messageText, setMessageText] = useState("");
   const [search, setSearch] = useState("");
 
-  const [selectedMessage, setSelectedMessage] =
-    useState<ActivityMessage | null>(null);
+  const [view, setView] = useState<
+    "inbox" | "sent" | "all"
+  >("inbox");
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   const [mobileMenuOpen, setMobileMenuOpen] =
     useState(false);
 
+  const [mobileConversationOpen, setMobileConversationOpen] =
+    useState(false);
+
+  const messagesEndRef = useRef<HTMLDivElement | null>(
+    null
+  );
+
   /* =======================================================
-     LOAD DATA
+     CURRENT AUTHORITY
   ======================================================= */
 
-  const loadData = useCallback(
-    async (refresh = false) => {
-      if (refresh) {
-        setRefreshing(true);
-      } else {
-        setLoading(true);
+  const loadAuthority = useCallback(async () => {
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      router.replace("/login");
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from("authority")
+      .select(
+        `
+          id,
+          user_id,
+          full_name,
+          role,
+          designation,
+          phone_number,
+          department,
+          is_active
+        `
+      )
+      .eq("user_id", user.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(
+        error.message ||
+          "Unable to load authority profile."
+      );
+    }
+
+    if (!data) {
+      await supabase.auth.signOut();
+      router.replace("/login");
+      return null;
+    }
+
+    return data as Authority;
+  }, [router]);
+
+  /* =======================================================
+     LOAD STAFF
+  ======================================================= */
+
+  const loadStaff = useCallback(
+    async (currentUserId: string) => {
+      const { data, error } = await supabase
+        .from("authority")
+        .select(
+          `
+            id,
+            user_id,
+            full_name,
+            role,
+            designation,
+            phone_number,
+            department,
+            is_active
+          `
+        )
+        .eq("is_active", true)
+        .neq("user_id", currentUserId)
+        .order("full_name", {
+          ascending: true,
+        });
+
+      if (error) {
+        throw new Error(
+          error.message ||
+            "Unable to load communication members."
+        );
       }
 
-      setError("");
-
-      try {
-        /* ---------------------------------------------------
-           1. CURRENT USER
-        --------------------------------------------------- */
-
-        const {
-          data: { user },
-          error: authError,
-        } = await supabase.auth.getUser();
-
-        if (authError || !user) {
-          router.replace("/login");
-          return;
-        }
-
-        /* ---------------------------------------------------
-           2. AUTHORITY PROFILE
-        --------------------------------------------------- */
-
-        const {
-          data: authorityData,
-          error: authorityError,
-        } = await supabase
-          .from("authority")
-          .select(
-            `
-              id,
-              user_id,
-              full_name,
-              role,
-              designation,
-              phone_number,
-              department,
-              is_active
-            `
-          )
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .maybeSingle();
-
-        if (authorityError) {
-          throw new Error(
-            authorityError.message ||
-              "Unable to load authority profile."
-          );
-        }
-
-        if (!authorityData) {
-          await supabase.auth.signOut();
-          router.replace("/login");
-          return;
-        }
-
-        /* ---------------------------------------------------
-           3. AUTHORITY SECURITY
-        --------------------------------------------------- */
-
-        const role = String(
-          authorityData.role || ""
-        ).toLowerCase();
-
-        const designation = String(
-          authorityData.designation || ""
-        ).toLowerCase();
-
-        const isPrincipal =
-          role.includes("principal") &&
-          !role.includes("vice");
-
-        const isVicePrincipal =
-          role.includes("vice principal") ||
-          designation.includes("vice principal") ||
-          role.includes("vp");
-
-        if (!isPrincipal && !isVicePrincipal) {
-          await supabase.auth.signOut();
-          router.replace("/login");
-          return;
-        }
-
-        setAuthority(authorityData);
-
-        /* ---------------------------------------------------
-           4. LOAD MESSAGES
-        --------------------------------------------------- */
-
-        const {
-          data: messageData,
-          error: messageError,
-        } = await supabase
-          .from("activity_messages")
-          .select(
-            `
-              id,
-              activity_id,
-              sender_id,
-              receiver_id,
-              message,
-              created_at
-            `
-          )
-          .eq("receiver_id", user.id)
-          .order("created_at", {
-            ascending: false,
-          });
-
-        if (messageError) {
-          throw new Error(
-            messageError.message ||
-              "Unable to load messages."
-          );
-        }
-
-        const loadedMessages =
-          (messageData || []) as ActivityMessage[];
-
-        setMessages(loadedMessages);
-
-        /* ---------------------------------------------------
-           5. LOAD VOLUNTEERS
-        --------------------------------------------------- */
-
-        const senderIds = Array.from(
-          new Set(
-            loadedMessages.map(
-              (message) => message.sender_id
-            )
-          )
-        );
-
-        if (senderIds.length > 0) {
-          const {
-            data: volunteerData,
-            error: volunteerError,
-          } = await supabase
-            .from("volunteers")
-            .select(
-              `
-                id,
-                full_name,
-                roll_number,
-                department,
-                course,
-                year,
-                section,
-                college_email,
-                mobile_number,
-                photo_url
-              `
-            )
-            .in("id", senderIds);
-
-          if (volunteerError) {
-            console.error(
-              "Volunteer loading error:",
-              volunteerError
-            );
-          }
-
-          const volunteerMap: Record<
-            string,
-            Volunteer
-          > = {};
-
-          (volunteerData || []).forEach(
-            (volunteer) => {
-              volunteerMap[volunteer.id] =
-                volunteer;
-            }
-          );
-
-          setVolunteers(volunteerMap);
-        } else {
-          setVolunteers({});
-        }
-
-        /* ---------------------------------------------------
-           6. LOAD ACTIVITIES
-        --------------------------------------------------- */
-
-        const activityIds = Array.from(
-          new Set(
-            loadedMessages.map(
-              (message) => message.activity_id
-            )
-          )
-        );
-
-        if (activityIds.length > 0) {
-          const {
-            data: activityData,
-            error: activityError,
-          } = await supabase
-            .from("activities")
-            .select(
-              `
-                id,
-                title,
-                description
-              `
-            )
-            .in("id", activityIds);
-
-          if (activityError) {
-            console.error(
-              "Activity loading error:",
-              activityError
-            );
-          }
-
-          const activityMap: Record<
-            string,
-            Activity
-          > = {};
-
-          (activityData || []).forEach(
-            (activity) => {
-              activityMap[activity.id] =
-                activity;
-            }
-          );
-
-          setActivities(activityMap);
-        } else {
-          setActivities({});
-        }
-      } catch (err) {
-        console.error(
-          "Authority messages error:",
-          err
-        );
-
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load messages."
-        );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
+      setStaff((data || []) as Authority[]);
     },
-    [router]
+    []
+  );
+
+  /* =======================================================
+     LOAD MESSAGES
+  ======================================================= */
+
+  const loadMessages = useCallback(
+    async (currentUserId: string) => {
+      const { data, error } = await supabase
+        .from("communication_messages")
+        .select(
+          `
+            id,
+            sender_id,
+            receiver_id,
+            message,
+            is_read,
+            read_at,
+            created_at,
+            updated_at
+          `
+        )
+        .or(
+          `sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`
+        )
+        .order("created_at", {
+          ascending: true,
+        });
+
+      if (error) {
+        throw new Error(
+          error.message ||
+            "Unable to load communication messages."
+        );
+      }
+
+      setMessages(
+        (data || []) as CommunicationMessage[]
+      );
+    },
+    []
   );
 
   /* =======================================================
      INITIAL LOAD
   ======================================================= */
 
+  const loadData = useCallback(
+    async (refresh = false) => {
+      try {
+        if (refresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
+
+        setError("");
+
+        const currentAuthority =
+          await loadAuthority();
+
+        if (!currentAuthority) return;
+
+        setAuthority(currentAuthority);
+
+        await Promise.all([
+          loadStaff(currentAuthority.user_id),
+          loadMessages(currentAuthority.user_id),
+        ]);
+      } catch (err) {
+        console.error(
+          "Communication centre error:",
+          err
+        );
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Unable to load communication centre."
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [loadAuthority, loadStaff, loadMessages]
+  );
+
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  /* =======================================================
+     REALTIME
+  ======================================================= */
+
+  useEffect(() => {
+    if (!authority?.user_id) return;
+
+    const channel = supabase
+      .channel(
+        `communication-${authority.user_id}`
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "communication_messages",
+        },
+        (payload) => {
+          if (payload.eventType === "INSERT") {
+            const newMessage =
+              payload.new as CommunicationMessage;
+
+            if (
+              newMessage.sender_id ===
+                authority.user_id ||
+              newMessage.receiver_id ===
+                authority.user_id
+            ) {
+              setMessages((current) => {
+                if (
+                  current.some(
+                    (item) =>
+                      item.id === newMessage.id
+                  )
+                ) {
+                  return current;
+                }
+
+                return [...current, newMessage];
+              });
+            }
+          }
+
+          if (payload.eventType === "UPDATE") {
+            const updatedMessage =
+              payload.new as CommunicationMessage;
+
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === updatedMessage.id
+                  ? updatedMessage
+                  : item
+              )
+            );
+          }
+
+          if (payload.eventType === "DELETE") {
+            const deletedMessage =
+              payload.old as CommunicationMessage;
+
+            setMessages((current) =>
+              current.filter(
+                (item) =>
+                  item.id !== deletedMessage.id
+              )
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authority?.user_id]);
+
+  /* =======================================================
+     CONVERSATIONS
+  ======================================================= */
+
+  const conversations = useMemo(() => {
+    if (!authority) return [];
+
+    return staff.map((person) => {
+      const conversationMessages =
+        messages.filter(
+          (message) =>
+            (message.sender_id ===
+              authority.user_id &&
+              message.receiver_id ===
+                person.user_id) ||
+            (message.sender_id ===
+              person.user_id &&
+              message.receiver_id ===
+                authority.user_id)
+        );
+
+      const lastMessage =
+        conversationMessages.length > 0
+          ? conversationMessages[
+              conversationMessages.length - 1
+            ]
+          : null;
+
+      const unreadCount =
+        conversationMessages.filter(
+          (message) =>
+            message.receiver_id ===
+              authority.user_id &&
+            !message.is_read
+        ).length;
+
+      return {
+        person,
+        messages: conversationMessages,
+        lastMessage,
+        unreadCount,
+      };
+    });
+  }, [staff, messages, authority]);
+
+  /* =======================================================
+     FILTER STAFF
+  ======================================================= */
+
+  const filteredConversations =
+    useMemo(() => {
+      const value = search.trim().toLowerCase();
+
+      return conversations
+        .filter((conversation) => {
+          if (!value) return true;
+
+          return (
+            conversation.person.full_name
+              .toLowerCase()
+              .includes(value) ||
+            getRoleLabel(
+              conversation.person
+            )
+              .toLowerCase()
+              .includes(value) ||
+            (
+              conversation.person.department ||
+              ""
+            )
+              .toLowerCase()
+              .includes(value)
+          );
+        })
+        .filter((conversation) => {
+          if (view === "all") return true;
+
+          if (view === "inbox") {
+            return conversation.messages.some(
+              (message) =>
+                message.receiver_id ===
+                authority?.user_id
+            );
+          }
+
+          if (view === "sent") {
+            return conversation.messages.some(
+              (message) =>
+                message.sender_id ===
+                authority?.user_id
+            );
+          }
+
+          return true;
+        })
+        .sort((a, b) => {
+          const aTime =
+            a.lastMessage
+              ? new Date(
+                  a.lastMessage.created_at
+                ).getTime()
+              : 0;
+
+          const bTime =
+            b.lastMessage
+              ? new Date(
+                  b.lastMessage.created_at
+                ).getTime()
+              : 0;
+
+          return bTime - aTime;
+        });
+    }, [
+      conversations,
+      search,
+      view,
+      authority?.user_id,
+    ]);
+
+  /* =======================================================
+     SELECTED CONVERSATION
+  ======================================================= */
+
+  const selectedConversation =
+    useMemo(() => {
+      if (!selectedUserId) return null;
+
+      return (
+        conversations.find(
+          (conversation) =>
+            conversation.person.user_id ===
+            selectedUserId
+        ) || null
+      );
+    }, [conversations, selectedUserId]);
+
+  /* =======================================================
+     UNREAD TOTAL
+  ======================================================= */
+
+  const unreadTotal = useMemo(() => {
+    if (!authority) return 0;
+
+    return messages.filter(
+      (message) =>
+        message.receiver_id ===
+          authority.user_id &&
+        !message.is_read
+    ).length;
+  }, [messages, authority]);
+
+  /* =======================================================
+     SELECT PERSON
+  ======================================================= */
+
+  const selectPerson = async (
+    userId: string
+  ) => {
+    setSelectedUserId(userId);
+    setMobileConversationOpen(true);
+
+    if (!authority) return;
+
+    const unreadMessages = messages.filter(
+      (message) =>
+        message.sender_id === userId &&
+        message.receiver_id ===
+          authority.user_id &&
+        !message.is_read
+    );
+
+    if (unreadMessages.length === 0) return;
+
+    const ids = unreadMessages.map(
+      (message) => message.id
+    );
+
+    const now = new Date().toISOString();
+
+    const { error } = await supabase
+      .from("communication_messages")
+      .update({
+        is_read: true,
+        read_at: now,
+        updated_at: now,
+      })
+      .in("id", ids)
+      .eq("receiver_id", authority.user_id);
+
+    if (error) {
+      console.error(
+        "Unable to mark messages as read:",
+        error
+      );
+      return;
+    }
+
+    setMessages((current) =>
+      current.map((message) =>
+        ids.includes(message.id)
+          ? {
+              ...message,
+              is_read: true,
+              read_at: now,
+              updated_at: now,
+            }
+          : message
+      )
+    );
+  };
+
+  /* =======================================================
+     SEND MESSAGE
+  ======================================================= */
+
+  const sendMessage = async () => {
+    const text = messageText.trim();
+
+    if (
+      !text ||
+      !authority ||
+      !selectedConversation ||
+      sending
+    ) {
+      return;
+    }
+
+    setSending(true);
+
+    try {
+      const receiverId =
+        selectedConversation.person.user_id;
+
+      const { data, error } = await supabase
+        .from("communication_messages")
+        .insert({
+          sender_id: authority.user_id,
+          receiver_id: receiverId,
+          message: text,
+        })
+        .select(
+          `
+            id,
+            sender_id,
+            receiver_id,
+            message,
+            is_read,
+            read_at,
+            created_at,
+            updated_at
+          `
+        )
+        .single();
+
+      if (error) {
+        throw new Error(
+          error.message ||
+            "Unable to send message."
+        );
+      }
+
+      if (data) {
+        setMessages((current) => {
+          if (
+            current.some(
+              (item) => item.id === data.id
+            )
+          ) {
+            return current;
+          }
+
+          return [
+            ...current,
+            data as CommunicationMessage,
+          ];
+        });
+      }
+
+      setMessageText("");
+    } catch (err) {
+      console.error(
+        "Send message error:",
+        err
+      );
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to send message."
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  /* =======================================================
+     ENTER TO SEND
+  ======================================================= */
+
+  const handleMessageKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    if (
+      event.key === "Enter" &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      sendMessage();
+    }
+  };
 
   /* =======================================================
      LOGOUT
@@ -414,56 +733,6 @@ export default function AuthorityMessagesPage() {
   };
 
   /* =======================================================
-     FILTER
-  ======================================================= */
-
-  const filteredMessages = useMemo(() => {
-    const value = search
-      .trim()
-      .toLowerCase();
-
-    if (!value) {
-      return messages;
-    }
-
-    return messages.filter((message) => {
-      const volunteer =
-        volunteers[message.sender_id];
-
-      const activity =
-        activities[message.activity_id];
-
-      return (
-        message.message
-          .toLowerCase()
-          .includes(value) ||
-        volunteer?.full_name
-          ?.toLowerCase()
-          .includes(value) ||
-        volunteer?.roll_number
-          ?.toLowerCase()
-          .includes(value) ||
-        volunteer?.department
-          ?.toLowerCase()
-          .includes(value) ||
-        activity?.title
-          ?.toLowerCase()
-          .includes(value)
-      );
-    });
-  }, [
-    messages,
-    search,
-    volunteers,
-    activities,
-  ]);
-
-  const roleLabel =
-    authority?.designation ||
-    authority?.role ||
-    "Authority";
-
-  /* =======================================================
      LOADING
   ======================================================= */
 
@@ -474,7 +743,7 @@ export default function AuthorityMessagesPage() {
           <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#0F2B7B]" />
 
           <p className="mt-4 text-sm text-gray-500">
-            Loading messages...
+            Loading communication centre...
           </p>
         </div>
       </main>
@@ -485,7 +754,7 @@ export default function AuthorityMessagesPage() {
      ERROR
   ======================================================= */
 
-  if (error) {
+  if (error && !authority) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="w-full max-w-lg rounded-2xl bg-white p-8 text-center shadow-lg">
@@ -494,7 +763,7 @@ export default function AuthorityMessagesPage() {
           </div>
 
           <h1 className="mt-5 text-xl font-bold text-gray-900">
-            Unable to load messages
+            Unable to load communication centre
           </h1>
 
           <p className="mt-3 text-sm leading-6 text-gray-500">
@@ -503,7 +772,7 @@ export default function AuthorityMessagesPage() {
 
           <button
             onClick={() => loadData()}
-            className="mt-6 rounded-xl bg-[#0F2B7B] px-6 py-3 font-semibold text-white transition hover:bg-[#163A8C]"
+            className="mt-6 rounded-xl bg-[#0F2B7B] px-6 py-3 font-semibold text-white"
           >
             Try Again
           </button>
@@ -512,13 +781,7 @@ export default function AuthorityMessagesPage() {
     );
   }
 
-  if (!authority) {
-    return null;
-  }
-
-  /* =======================================================
-     PAGE
-  ======================================================= */
+  if (!authority) return null;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -528,8 +791,6 @@ export default function AuthorityMessagesPage() {
       ===================================================== */}
 
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-60 border-r border-slate-200 bg-white lg:flex lg:flex-col">
-
-        {/* BRAND */}
 
         <div className="flex h-[68px] items-center border-b border-slate-200 px-5">
 
@@ -549,8 +810,6 @@ export default function AuthorityMessagesPage() {
 
         </div>
 
-        {/* USER */}
-
         <div className="border-b border-slate-200 p-3">
 
           <div className="rounded-xl bg-gradient-to-r from-[#0F2B7B] to-[#1C4ED8] p-3 text-white">
@@ -568,7 +827,7 @@ export default function AuthorityMessagesPage() {
                 </p>
 
                 <p className="truncate text-[11px] text-blue-100">
-                  {roleLabel}
+                  {getRoleLabel(authority)}
                 </p>
 
               </div>
@@ -579,8 +838,6 @@ export default function AuthorityMessagesPage() {
 
         </div>
 
-        {/* NAVIGATION */}
-
         <nav className="flex-1 px-3 py-5">
 
           <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-gray-400">
@@ -590,7 +847,7 @@ export default function AuthorityMessagesPage() {
           <div className="mt-3 space-y-1">
 
             <SidebarLink
-              icon={<CalendarDays size={18} />}
+              icon={<MessageCircle size={18} />}
               label="Dashboard"
               onClick={() =>
                 router.push("/authority")
@@ -598,7 +855,7 @@ export default function AuthorityMessagesPage() {
             />
 
             <SidebarLink
-              icon={<CalendarDays size={18} />}
+              icon={<MessageSquare size={18} />}
               label="Events"
               onClick={() =>
                 router.push("/authority/events")
@@ -616,7 +873,7 @@ export default function AuthorityMessagesPage() {
             />
 
             <SidebarLink
-              icon={<ClipboardCheck size={18} />}
+              icon={<CheckCheck size={18} />}
               label="Attendance"
               onClick={() =>
                 router.push(
@@ -626,7 +883,7 @@ export default function AuthorityMessagesPage() {
             />
 
             <SidebarLink
-              icon={<UserCheck size={18} />}
+              icon={<Inbox size={18} />}
               label="Registrations"
               onClick={() =>
                 router.push(
@@ -636,9 +893,12 @@ export default function AuthorityMessagesPage() {
             />
 
             <SidebarLink
-              icon={<MessageSquare size={18} />}
+              icon={
+                <MessageSquare size={18} />
+              }
               label="Messages & Suggestions"
               active
+              badge={unreadTotal}
               onClick={() =>
                 router.push(
                   "/authority/messages"
@@ -650,8 +910,6 @@ export default function AuthorityMessagesPage() {
 
         </nav>
 
-        {/* ACCESS */}
-
         <div className="border-t border-slate-200 p-3">
 
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
@@ -661,15 +919,14 @@ export default function AuthorityMessagesPage() {
               <ShieldCheck size={16} />
 
               <span className="text-xs font-bold">
-                View Only Access
+                Communication Centre
               </span>
 
             </div>
 
             <p className="mt-2 text-[10px] leading-4 text-gray-500">
-              Authority accounts can view NSS
-              information but cannot modify
-              administrative records.
+              Communicate directly with authorized NSS
+              authorities and coordinators.
             </p>
 
           </div>
@@ -687,11 +944,11 @@ export default function AuthorityMessagesPage() {
       </aside>
 
       {/* =====================================================
-          MOBILE SIDEBAR
+          MOBILE MENU
       ===================================================== */}
 
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-[60] lg:hidden">
+        <div className="fixed inset-0 z-[70] lg:hidden">
 
           <div
             className="absolute inset-0 bg-black/40"
@@ -742,7 +999,7 @@ export default function AuthorityMessagesPage() {
                 </p>
 
                 <p className="mt-1 text-[11px] text-blue-100">
-                  {roleLabel}
+                  {getRoleLabel(authority)}
                 </p>
 
               </div>
@@ -758,18 +1015,20 @@ export default function AuthorityMessagesPage() {
               <div className="mt-3 space-y-1">
 
                 <MobileSidebarLink
-                  icon={<CalendarDays size={18} />}
+                  icon={
+                    <MessageCircle size={18} />
+                  }
                   label="Dashboard"
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    router.push(
-                      "/authority"
-                    );
+                    router.push("/authority");
                   }}
                 />
 
                 <MobileSidebarLink
-                  icon={<CalendarDays size={18} />}
+                  icon={
+                    <MessageSquare size={18} />
+                  }
                   label="Events"
                   onClick={() => {
                     setMobileMenuOpen(false);
@@ -791,7 +1050,9 @@ export default function AuthorityMessagesPage() {
                 />
 
                 <MobileSidebarLink
-                  icon={<ClipboardCheck size={18} />}
+                  icon={
+                    <CheckCheck size={18} />
+                  }
                   label="Attendance"
                   onClick={() => {
                     setMobileMenuOpen(false);
@@ -802,7 +1063,7 @@ export default function AuthorityMessagesPage() {
                 />
 
                 <MobileSidebarLink
-                  icon={<UserCheck size={18} />}
+                  icon={<Inbox size={18} />}
                   label="Registrations"
                   onClick={() => {
                     setMobileMenuOpen(false);
@@ -813,9 +1074,12 @@ export default function AuthorityMessagesPage() {
                 />
 
                 <MobileSidebarLink
-                  icon={<MessageSquare size={18} />}
+                  icon={
+                    <MessageSquare size={18} />
+                  }
                   label="Messages & Suggestions"
                   active
+                  badge={unreadTotal}
                   onClick={() => {
                     setMobileMenuOpen(false);
                     router.push(
@@ -846,75 +1110,22 @@ export default function AuthorityMessagesPage() {
       )}
 
       {/* =====================================================
-          MAIN
+          MAIN AREA
       ===================================================== */}
 
       <div className="lg:pl-60">
 
-        {/* TOP HEADER */}
+        
 
-        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-
-          <div className="flex h-[68px] items-center justify-between px-4 sm:px-6 lg:px-8">
-
-            <div className="flex items-center gap-3">
-
-              <button
-                onClick={() =>
-                  setMobileMenuOpen(true)
-                }
-                className="rounded-lg p-2 hover:bg-slate-100 lg:hidden"
-              >
-                <Menu size={23} />
-              </button>
-
-              <div>
-
-                <p className="hidden text-[11px] text-gray-400 sm:block">
-                  Aurora&apos;s Degree & PG College
-                </p>
-
-                <h1 className="text-lg font-bold text-[#0F2B7B]">
-                  Messages & Suggestions
-                </h1>
-
-              </div>
-
-            </div>
-
-            <div className="flex items-center gap-3">
-
-              <div className="hidden text-right sm:block">
-
-                <p className="text-sm font-bold text-gray-800">
-                  {authority.full_name}
-                </p>
-
-                <p className="text-[10px] text-gray-500">
-                  {roleLabel}
-                </p>
-
-              </div>
-
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F2B7B] text-white">
-                <ShieldCheck size={19} />
-              </div>
-
-            </div>
-
-          </div>
-
-        </header>
-
-        {/* ===================================================
+        {/* =================================================
             CONTENT
-        =================================================== */}
+        ================================================= */}
 
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 lg:px-8">
 
           {/* PAGE TITLE */}
 
-          <section className="mb-6">
+          <section className="mb-5">
 
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
 
@@ -929,19 +1140,18 @@ export default function AuthorityMessagesPage() {
                   <ChevronRight size={13} />
 
                   <span className="text-[#0F2B7B]">
-                    Messages & Suggestions
+                    Communication
                   </span>
 
                 </div>
 
                 <h2 className="mt-2 text-2xl font-bold text-gray-900 sm:text-3xl">
-                  Communication Center
+                  Messages & Suggestions
                 </h2>
 
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-gray-500">
-                  Review messages received from NSS
-                  volunteers regarding their activities
-                  and participation.
+                <p className="mt-1 text-sm text-gray-500">
+                  Direct communication between NSS
+                  authorities and coordinators.
                 </p>
 
               </div>
@@ -951,7 +1161,6 @@ export default function AuthorityMessagesPage() {
                 disabled={refreshing}
                 className="flex w-fit items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:opacity-60"
               >
-
                 <RefreshCw
                   size={17}
                   className={
@@ -962,356 +1171,504 @@ export default function AuthorityMessagesPage() {
                 />
 
                 Refresh
-
               </button>
 
             </div>
 
           </section>
 
-          {/* =================================================
-              SUMMARY
-          ================================================= */}
+          {/* ERROR BANNER */}
 
-          <section className="grid gap-4 sm:grid-cols-3">
+          {error && (
+            <div className="mb-4 flex items-center justify-between rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
 
-            <SummaryCard
-              icon={
-                <Inbox size={20} />
-              }
-              label="Total Messages"
-              value={messages.length}
-            />
+              <span>{error}</span>
 
-            <SummaryCard
-              icon={
-                <Users size={20} />
-              }
-              label="Volunteer Senders"
-              value={
-                new Set(
-                  messages.map(
-                    (message) =>
-                      message.sender_id
-                  )
-                ).size
-              }
-            />
-
-            <SummaryCard
-              icon={
-                <Clock size={20} />
-              }
-              label="Latest Message"
-              value={
-                messages.length > 0
-                  ? formatDate(
-                      messages[0].created_at
-                    )
-                  : "—"
-              }
-              isText
-            />
-
-          </section>
-
-          {/* =================================================
-              SEARCH
-          ================================================= */}
-
-          <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-
-            <div className="relative w-full">
-
-              <Search
-                size={18}
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
-              />
-
-              <input
-                type="text"
-                value={search}
-                onChange={(event) =>
-                  setSearch(
-                    event.target.value
-                  )
-                }
-                placeholder="Search by volunteer, roll number, department, activity or message..."
-                className="w-full rounded-xl border border-gray-200 bg-slate-50 py-3 pl-11 pr-4 text-sm outline-none transition focus:border-[#0F2B7B] focus:bg-white focus:ring-2 focus:ring-blue-100"
-              />
+              <button
+                onClick={() => setError("")}
+                className="rounded-lg p-1 hover:bg-red-100"
+              >
+                <X size={16} />
+              </button>
 
             </div>
-
-          </section>
-
-          {/* =================================================
-              MOBILE SELECTED MESSAGE BACK BUTTON
-          ================================================= */}
-
-          {selectedMessage && (
-            <button
-              onClick={() =>
-                setSelectedMessage(null)
-              }
-              className="mt-5 flex items-center gap-2 text-sm font-semibold text-[#0F2B7B] lg:hidden"
-            >
-              <ArrowLeft size={17} />
-              Back to messages
-            </button>
           )}
 
           {/* =================================================
-              INBOX + DETAILS
+              COMMUNICATION LAYOUT
           ================================================= */}
 
-          <section className="mt-6 grid gap-5 lg:grid-cols-[420px_minmax(0,1fr)]">
+          <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
 
-            {/* =================================================
-                MESSAGE LIST
-            ================================================= */}
+            <div className="grid min-h-[calc(100vh-235px)] lg:grid-cols-[330px_1fr]">
 
-            <div
-              className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
-                selectedMessage
-                  ? "hidden lg:block"
-                  : "block"
-              }`}
-            >
+              {/* =================================================
+                  PEOPLE / INBOX
+              ================================================= */}
 
-              <div className="border-b border-slate-200 p-5">
+              <div
+                className={`border-r border-slate-200 ${
+                  mobileConversationOpen
+                    ? "hidden lg:block"
+                    : "block"
+                }`}
+              >
 
-                <div className="flex items-center justify-between">
+                {/* PEOPLE HEADER */}
 
-                  <div>
+                <div className="border-b border-slate-200 p-4">
 
-                    <h3 className="font-bold text-gray-900">
-                      Inbox
-                    </h3>
+                  <div className="flex items-center justify-between">
 
-                    <p className="mt-1 text-xs text-gray-500">
-                      {filteredMessages.length} message
-                      {filteredMessages.length !== 1
-                        ? "s"
-                        : ""}
-                    </p>
+                    <div>
+
+                      <h3 className="font-bold text-gray-900">
+                        Communication
+                      </h3>
+
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {staff.length} active members
+                      </p>
+
+                    </div>
+
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-[#0F2B7B]">
+                      <Users size={18} />
+                    </div>
 
                   </div>
 
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0F2B7B]">
-                    <MessageSquare size={19} />
+                  {/* SEARCH */}
+
+                  <div className="relative mt-4">
+
+                    <Search
+                      size={17}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    />
+
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(event) =>
+                        setSearch(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Search staff..."
+                      className="w-full rounded-xl border border-gray-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#0F2B7B] focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    />
+
                   </div>
+
+                  {/* TABS */}
+
+                  <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
+
+                    <ViewTab
+                      label="Inbox"
+                      active={view === "inbox"}
+                      badge={unreadTotal}
+                      onClick={() =>
+                        setView("inbox")
+                      }
+                    />
+
+                    <ViewTab
+                      label="Sent"
+                      active={view === "sent"}
+                      onClick={() =>
+                        setView("sent")
+                      }
+                    />
+
+                    <ViewTab
+                      label="All"
+                      active={view === "all"}
+                      onClick={() =>
+                        setView("all")
+                      }
+                    />
+
+                  </div>
+
+                </div>
+
+                {/* PEOPLE LIST */}
+
+                <div className="max-h-[calc(100vh-390px)] overflow-y-auto">
+
+                  {filteredConversations.length ===
+                  0 ? (
+                    <div className="p-8 text-center">
+
+                      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-gray-400">
+                        <Users size={21} />
+                      </div>
+
+                      <p className="mt-3 text-sm font-semibold text-gray-700">
+                        No conversations
+                      </p>
+
+                      <p className="mt-1 text-xs text-gray-400">
+                        No matching staff members found.
+                      </p>
+
+                    </div>
+                  ) : (
+                    filteredConversations.map(
+                      (conversation) => (
+                        <ConversationListItem
+                          key={
+                            conversation.person
+                              .user_id
+                          }
+                          conversation={
+                            conversation
+                          }
+                          active={
+                            selectedUserId ===
+                            conversation.person
+                              .user_id
+                          }
+                          onClick={() =>
+                            selectPerson(
+                              conversation.person
+                                .user_id
+                            )
+                          }
+                        />
+                      )
+                    )
+                  )}
 
                 </div>
 
               </div>
 
-              <div className="max-h-[700px] overflow-y-auto">
+              {/* =================================================
+                  CHAT AREA
+              ================================================= */}
 
-                {filteredMessages.length === 0 ? (
-                  <div className="p-10 text-center">
+              <div
+                className={`flex min-w-0 flex-col ${
+                  mobileConversationOpen
+                    ? "flex"
+                    : "hidden lg:flex"
+                }`}
+              >
 
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-gray-400">
-                      <MessageSquare size={24} />
+                {selectedConversation ? (
+                  <>
+                    {/* CHAT HEADER */}
+
+                    <div className="flex h-[76px] shrink-0 items-center justify-between border-b border-slate-200 px-4 sm:px-6">
+
+                      <div className="flex min-w-0 items-center gap-3">
+
+                        <button
+                          onClick={() => {
+                            setMobileConversationOpen(
+                              false
+                            );
+                          }}
+                          className="rounded-lg p-2 hover:bg-slate-100 lg:hidden"
+                        >
+                          <ArrowLeft size={20} />
+                        </button>
+
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0F2B7B] text-sm font-bold text-white">
+                          {getInitials(
+                            selectedConversation
+                              .person.full_name
+                          )}
+                        </div>
+
+                        <div className="min-w-0">
+
+                          <h3 className="truncate text-sm font-bold text-gray-900 sm:text-base">
+                            {
+                              selectedConversation
+                                .person.full_name
+                            }
+                          </h3>
+
+                          <p className="truncate text-xs text-gray-500">
+                            {getRoleLabel(
+                              selectedConversation
+                                .person
+                            )}
+
+                            {selectedConversation
+                              .person
+                              .department &&
+                              ` • ${selectedConversation.person.department}`}
+                          </p>
+
+                        </div>
+
+                      </div>
+
+                      <div className="hidden items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 sm:flex">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-600" />
+                        Active
+                      </div>
+
                     </div>
 
-                    <h3 className="mt-4 font-bold text-gray-800">
-                      No messages found
-                    </h3>
+                    {/* MESSAGES */}
 
-                    <p className="mt-1 text-sm text-gray-500">
-                      {search
-                        ? "Try a different search."
-                        : "There are no messages available for this authority account."}
-                    </p>
+                    <div className="flex-1 overflow-y-auto bg-slate-50 px-4 py-5 sm:px-6">
 
-                  </div>
-                ) : (
-                  filteredMessages.map(
-                    (message) => {
+                      {selectedConversation.messages.length ===
+                      0 ? (
+                        <div className="flex h-full min-h-[350px] items-center justify-center">
 
-                      const volunteer =
-                        volunteers[
-                          message.sender_id
-                        ];
+                          <div className="max-w-sm text-center">
 
-                      const activity =
-                        activities[
-                          message.activity_id
-                        ];
-
-                      const selected =
-                        selectedMessage?.id ===
-                        message.id;
-
-                      return (
-                        <button
-                          key={message.id}
-                          onClick={() =>
-                            setSelectedMessage(
-                              message
-                            )
-                          }
-                          className={`w-full border-b border-slate-100 p-5 text-left transition ${
-                            selected
-                              ? "bg-blue-50"
-                              : "hover:bg-slate-50"
-                          }`}
-                        >
-
-                          <div className="flex gap-3">
-
-                            {/* AVATAR */}
-
-                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#0F2B7B] text-white">
-
-                              {volunteer?.photo_url ? (
-                                <img
-                                  src={
-                                    volunteer.photo_url
-                                  }
-                                  alt=""
-                                  className="h-11 w-11 rounded-full object-cover"
-                                />
-                              ) : (
-                                <User size={19} />
-                              )}
-
+                            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#0F2B7B]">
+                              <MessageCircle
+                                size={28}
+                              />
                             </div>
 
-                            {/* MESSAGE PREVIEW */}
+                            <h3 className="mt-4 font-bold text-gray-800">
+                              Start a conversation
+                            </h3>
 
-                            <div className="min-w-0 flex-1">
-
-                              <div className="flex items-start justify-between gap-3">
-
-                                <div className="min-w-0">
-
-                                  <p className="truncate text-sm font-bold text-gray-900">
-                                    {volunteer?.full_name ||
-                                      "Volunteer"}
-                                  </p>
-
-                                  <p className="truncate text-[11px] text-gray-400">
-                                    {volunteer?.roll_number ||
-                                      "Volunteer ID unavailable"}
-                                  </p>
-
-                                </div>
-
-                                <span className="shrink-0 text-[10px] text-gray-400">
-                                  {formatDate(
-                                    message.created_at
-                                  )}
-                                </span>
-
-                              </div>
-
-                              {activity?.title && (
-                                <p className="mt-2 truncate text-xs font-semibold text-[#0F2B7B]">
-                                  {activity.title}
-                                </p>
-                              )}
-
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500">
-                                {message.message}
-                              </p>
-
-                            </div>
+                            <p className="mt-2 text-sm leading-6 text-gray-500">
+                              Send a message to{" "}
+                              <span className="font-semibold">
+                                {
+                                  selectedConversation
+                                    .person
+                                    .full_name
+                                }
+                              </span>
+                              .
+                            </p>
 
                           </div>
 
-                        </button>
-                      );
-                    }
-                  )
+                        </div>
+                      ) : (
+                        <div className="mx-auto max-w-4xl space-y-3">
+
+                          {selectedConversation.messages.map(
+                            (message) => {
+                              const isMine =
+                                message.sender_id ===
+                                authority.user_id;
+
+                              return (
+                                <div
+                                  key={message.id}
+                                  className={`flex ${
+                                    isMine
+                                      ? "justify-end"
+                                      : "justify-start"
+                                  }`}
+                                >
+
+                                  <div
+                                    className={`max-w-[85%] sm:max-w-[70%] ${
+                                      isMine
+                                        ? "items-end"
+                                        : "items-start"
+                                    }`}
+                                  >
+
+                                    <div
+                                      className={`rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm ${
+                                        isMine
+                                          ? "rounded-br-md bg-[#0F2B7B] text-white"
+                                          : "rounded-bl-md border border-slate-200 bg-white text-gray-800"
+                                      }`}
+                                    >
+                                      {message.message}
+                                    </div>
+
+                                    <div
+                                      className={`mt-1 flex items-center gap-1.5 px-1 text-[10px] text-gray-400 ${
+                                        isMine
+                                          ? "justify-end"
+                                          : "justify-start"
+                                      }`}
+                                    >
+
+                                      <span>
+                                        {formatMessageDate(
+                                          message.created_at
+                                        )}
+                                      </span>
+
+                                      {isMine &&
+                                        (message.is_read ? (
+                                          <CheckCheck
+                                            size={13}
+                                            className="text-[#1C4ED8]"
+                                          />
+                                        ) : (
+                                          <Check
+                                            size={13}
+                                          />
+                                        ))}
+
+                                    </div>
+
+                                  </div>
+
+                                </div>
+                              );
+                            }
+                          )}
+
+                          <div
+                            ref={
+                              messagesEndRef
+                            }
+                          />
+
+                        </div>
+                      )}
+
+                    </div>
+
+                    {/* MESSAGE COMPOSER */}
+
+                    <div className="shrink-0 border-t border-slate-200 bg-white p-3 sm:p-4">
+
+                      <div className="mx-auto max-w-4xl">
+
+                        <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-slate-50 p-2 focus-within:border-[#0F2B7B] focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100">
+
+                          <textarea
+                            value={messageText}
+                            onChange={(event) =>
+                              setMessageText(
+                                event.target.value
+                              )
+                            }
+                            onKeyDown={
+                              handleMessageKeyDown
+                            }
+                            rows={1}
+                            placeholder={`Write a message to ${selectedConversation.person.full_name}...`}
+                            className="max-h-32 min-h-[44px] flex-1 resize-none bg-transparent px-3 py-2.5 text-sm outline-none"
+                          />
+
+                          <button
+                            onClick={sendMessage}
+                            disabled={
+                              sending ||
+                              !messageText.trim()
+                            }
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#0F2B7B] text-white transition hover:bg-[#163A8C] disabled:cursor-not-allowed disabled:opacity-50"
+                            title="Send message"
+                          >
+                            {sending ? (
+                              <RefreshCw
+                                size={18}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <Send size={18} />
+                            )}
+                          </button>
+
+                        </div>
+
+                        <p className="mt-2 px-2 text-[10px] text-gray-400">
+                          Press Enter to send • Shift +
+                          Enter for a new line
+                        </p>
+
+                      </div>
+
+                    </div>
+                  </>
+                ) : (
+                  /* =================================================
+                     NO CONVERSATION SELECTED
+                  ================================================= */
+
+                  <div className="flex flex-1 items-center justify-center bg-slate-50 px-6">
+
+                    <div className="max-w-md text-center">
+
+                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-blue-50 text-[#0F2B7B]">
+                        <MessageCircle
+                          size={36}
+                        />
+                      </div>
+
+                      <h2 className="mt-5 text-xl font-bold text-gray-900">
+                        Communication Centre
+                      </h2>
+
+                      <p className="mt-2 text-sm leading-6 text-gray-500">
+                        Select an NSS authority or coordinator
+                        from the list to view your conversation
+                        or start a new message.
+                      </p>
+
+                      <div className="mt-5 flex flex-wrap justify-center gap-2">
+
+                        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-sm">
+                          Principal
+                        </span>
+
+                        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-sm">
+                          Vice Principal
+                        </span>
+
+                        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-sm">
+                          Program Officers
+                        </span>
+
+                        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-sm">
+                          NSS Heads
+                        </span>
+
+                        <span className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 shadow-sm">
+                          Coordinators
+                        </span>
+
+                      </div>
+
+                    </div>
+
+                  </div>
                 )}
 
               </div>
 
             </div>
 
-            {/* =================================================
-                MESSAGE DETAILS
-            ================================================= */}
-
-            <div
-              className={`rounded-2xl border border-slate-200 bg-white shadow-sm ${
-                selectedMessage
-                  ? "block"
-                  : "hidden lg:block"
-              }`}
-            >
-
-              {!selectedMessage ? (
-                <div className="flex min-h-[500px] items-center justify-center p-8">
-
-                  <div className="max-w-md text-center">
-
-                    <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-[#0F2B7B]">
-                      <MessageSquare size={29} />
-                    </div>
-
-                    <h3 className="mt-5 text-lg font-bold text-gray-900">
-                      Select a message
-                    </h3>
-
-                    <p className="mt-2 text-sm leading-6 text-gray-500">
-                      Select a message from the inbox
-                      to view the complete communication
-                      and volunteer details.
-                    </p>
-
-                  </div>
-
-                </div>
-              ) : (
-                <MessageDetails
-                  message={selectedMessage}
-                  volunteer={
-                    volunteers[
-                      selectedMessage.sender_id
-                    ]
-                  }
-                  activity={
-                    activities[
-                      selectedMessage.activity_id
-                    ]
-                  }
-                  onBack={() =>
-                    setSelectedMessage(null)
-                  }
-                />
-              )}
-
-            </div>
-
           </section>
 
-          {/* =================================================
-              VIEW ONLY NOTICE
-          ================================================= */}
+          {/* FOOTER NOTICE */}
 
-          <section className="mt-8 rounded-2xl border border-blue-100 bg-blue-50 p-5 sm:p-6">
+          <section className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-4 sm:p-5">
 
             <div className="flex gap-3">
 
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#0F2B7B] text-white">
-                <ShieldCheck size={19} />
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#0F2B7B] text-white">
+                <ShieldCheck size={18} />
               </div>
 
               <div>
 
-                <h3 className="font-bold text-[#0F2B7B]">
-                  Authority Communication Access
+                <h3 className="text-sm font-bold text-[#0F2B7B]">
+                  Secure NSS Communication
                 </h3>
 
-                <p className="mt-1 text-sm leading-6 text-gray-600">
-                  This section allows Principal and
-                  Vice Principal accounts to review
-                  communications received from NSS
-                  volunteers. Administrative records
-                  cannot be modified from the Authority
-                  Portal.
+                <p className="mt-1 text-xs leading-5 text-gray-600">
+                  Messages are exchanged directly between
+                  authenticated NSS staff members. Principal,
+                  Vice Principal, Program Officers, Heads and
+                  authorized coordinators can communicate with
+                  one another through this centre.
                 </p>
 
               </div>
@@ -1329,275 +1686,6 @@ export default function AuthorityMessagesPage() {
 }
 
 /* =========================================================
-   MESSAGE DETAILS
-========================================================= */
-
-function MessageDetails({
-  message,
-  volunteer,
-  activity,
-  onBack,
-}: {
-  message: ActivityMessage;
-  volunteer?: Volunteer;
-  activity?: Activity;
-  onBack: () => void;
-}) {
-  return (
-    <div>
-
-      {/* HEADER */}
-
-      <div className="border-b border-slate-200 p-5 sm:p-6">
-
-        <div className="flex items-center justify-between gap-4">
-
-          <div className="flex items-center gap-3">
-
-            <button
-              onClick={onBack}
-              className="rounded-lg p-2 text-gray-500 hover:bg-slate-100 lg:hidden"
-            >
-              <ArrowLeft size={19} />
-            </button>
-
-            <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#0F2B7B] text-white">
-
-              {volunteer?.photo_url ? (
-                <img
-                  src={volunteer.photo_url}
-                  alt=""
-                  className="h-11 w-11 rounded-full object-cover"
-                />
-              ) : (
-                <User size={19} />
-              )}
-
-            </div>
-
-            <div className="min-w-0">
-
-              <h3 className="truncate text-lg font-bold text-gray-900">
-                {volunteer?.full_name ||
-                  "Volunteer"}
-              </h3>
-
-              <p className="text-xs text-gray-500">
-                NSS Volunteer
-              </p>
-
-            </div>
-
-          </div>
-
-          <div className="hidden rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-[#0F2B7B] sm:block">
-            Message
-          </div>
-
-        </div>
-
-      </div>
-
-      {/* BODY */}
-
-      <div className="p-5 sm:p-7">
-
-        {/* VOLUNTEER INFO */}
-
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-
-          <div className="flex items-center gap-2">
-
-            <User
-              size={17}
-              className="text-[#0F2B7B]"
-            />
-
-            <h4 className="font-bold text-gray-900">
-              Volunteer Information
-            </h4>
-
-          </div>
-
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-
-            <InfoItem
-              label="Full Name"
-              value={
-                volunteer?.full_name ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="Roll Number"
-              value={
-                volunteer?.roll_number ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="Department"
-              value={
-                volunteer?.department ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="Course"
-              value={
-                volunteer?.course ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="Year"
-              value={
-                volunteer?.year ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="Section"
-              value={
-                volunteer?.section ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="College Email"
-              value={
-                volunteer?.college_email ||
-                "Not available"
-              }
-            />
-
-            <InfoItem
-              label="Mobile Number"
-              value={
-                volunteer?.mobile_number ||
-                "Not available"
-              }
-            />
-
-          </div>
-
-        </div>
-
-        {/* ACTIVITY */}
-
-        <div className="mt-5 rounded-2xl border border-slate-200 p-5">
-
-          <div className="flex items-center gap-2">
-
-            <CalendarDays
-              size={17}
-              className="text-[#0F2B7B]"
-            />
-
-            <h4 className="font-bold text-gray-900">
-              Related Activity
-            </h4>
-
-          </div>
-
-          <div className="mt-3">
-
-            <p className="font-semibold text-[#0F2B7B]">
-              {activity?.title ||
-                "Activity information unavailable"}
-            </p>
-
-            {activity?.description && (
-              <p className="mt-1 text-sm leading-6 text-gray-500">
-                {activity.description}
-              </p>
-            )}
-
-          </div>
-
-        </div>
-
-        {/* MESSAGE */}
-
-        <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
-
-          <div className="flex items-center justify-between gap-3">
-
-            <div className="flex items-center gap-2">
-
-              <MessageSquare
-                size={17}
-                className="text-[#0F2B7B]"
-              />
-
-              <h4 className="font-bold text-gray-900">
-                Message
-              </h4>
-
-            </div>
-
-            <span className="flex items-center gap-1.5 text-xs text-gray-400">
-              <Clock size={14} />
-              {formatDateTime(
-                message.created_at
-              )}
-            </span>
-
-          </div>
-
-          <div className="mt-4 rounded-xl bg-slate-50 p-5">
-
-            <p className="whitespace-pre-wrap text-sm leading-7 text-gray-700">
-              {message.message}
-            </p>
-
-          </div>
-
-        </div>
-
-        {/* SYSTEM DETAILS */}
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
-
-          <div className="rounded-xl border border-slate-200 p-4">
-
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-              Message ID
-            </p>
-
-            <p className="mt-1 break-all text-xs font-medium text-gray-600">
-              {message.id}
-            </p>
-
-          </div>
-
-          <div className="rounded-xl border border-slate-200 p-4">
-
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-              Activity ID
-            </p>
-
-            <p className="mt-1 break-all text-xs font-medium text-gray-600">
-              {message.activity_id}
-            </p>
-
-          </div>
-
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-/* =========================================================
    SIDEBAR LINK
 ========================================================= */
 
@@ -1605,11 +1693,13 @@ function SidebarLink({
   icon,
   label,
   active = false,
+  badge = 0,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  badge?: number;
   onClick: () => void;
 }) {
   return (
@@ -1621,18 +1711,27 @@ function SidebarLink({
           : "text-gray-600 hover:bg-slate-100 hover:text-[#0F2B7B]"
       }`}
     >
-
       {icon}
 
-      <span>{label}</span>
+      <span className="flex-1">
+        {label}
+      </span>
 
-      {active && (
-        <ChevronRight
-          size={15}
-          className="ml-auto"
-        />
+      {badge > 0 && (
+        <span
+          className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+            active
+              ? "bg-white text-[#0F2B7B]"
+              : "bg-red-500 text-white"
+          }`}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
       )}
 
+      {active && (
+        <ChevronRight size={15} />
+      )}
     </button>
   );
 }
@@ -1645,97 +1744,166 @@ function MobileSidebarLink({
   icon,
   label,
   active = false,
+  badge = 0,
   onClick,
 }: {
   icon: React.ReactNode;
   label: string;
   active?: boolean;
+  badge?: number;
   onClick: () => void;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium ${
+      className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-medium transition ${
         active
           ? "bg-[#0F2B7B] text-white"
           : "text-gray-600 hover:bg-slate-100"
       }`}
     >
-
       {icon}
 
-      <span>{label}</span>
+      <span className="flex-1">
+        {label}
+      </span>
 
+      {badge > 0 && (
+        <span
+          className={`flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+            active
+              ? "bg-white text-[#0F2B7B]"
+              : "bg-red-500 text-white"
+          }`}
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </button>
   );
 }
 
 /* =========================================================
-   SUMMARY CARD
+   VIEW TAB
 ========================================================= */
 
-function SummaryCard({
-  icon,
+function ViewTab({
   label,
-  value,
-  isText = false,
+  active,
+  badge = 0,
+  onClick,
 }: {
-  icon: React.ReactNode;
   label: string;
-  value: number | string;
-  isText?: boolean;
+  active: boolean;
+  badge?: number;
+  onClick: () => void;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <button
+      onClick={onClick}
+      className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-bold transition ${
+        active
+          ? "bg-white text-[#0F2B7B] shadow-sm"
+          : "text-gray-500 hover:text-gray-700"
+      }`}
+    >
+      {label}
 
-      <div className="flex items-center justify-between gap-3">
-
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#0F2B7B]">
-          {icon}
-        </div>
-
-        <span
-          className={
-            isText
-              ? "text-sm font-bold text-gray-900"
-              : "text-2xl font-bold text-gray-900"
-          }
-        >
-          {value}
+      {badge > 0 && (
+        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+          {badge > 99 ? "99+" : badge}
         </span>
-
-      </div>
-
-      <p className="mt-3 text-sm font-medium text-gray-500">
-        {label}
-      </p>
-
-    </div>
+      )}
+    </button>
   );
 }
 
 /* =========================================================
-   INFO ITEM
+   CONVERSATION LIST ITEM
 ========================================================= */
 
-function InfoItem({
-  label,
-  value,
+function ConversationListItem({
+  conversation,
+  active,
+  onClick,
 }: {
-  label: string;
-  value: string;
+  conversation: Conversation;
+  active: boolean;
+  onClick: () => void;
 }) {
+  const { person, lastMessage, unreadCount } =
+    conversation;
+
   return (
-    <div>
+    <button
+      onClick={onClick}
+      className={`flex w-full gap-3 border-b border-slate-100 px-4 py-3.5 text-left transition ${
+        active
+          ? "bg-blue-50"
+          : "hover:bg-slate-50"
+      }`}
+    >
 
-      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-        {label}
-      </p>
+      <div
+        className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+          active
+            ? "bg-[#0F2B7B] text-white"
+            : "bg-slate-100 text-[#0F2B7B]"
+        }`}
+      >
+        {getInitials(person.full_name)}
 
-      <p className="mt-1 break-words text-sm font-semibold text-gray-800">
-        {value}
-      </p>
+        {unreadCount > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white ring-2 ring-white">
+            {unreadCount > 9
+              ? "9+"
+              : unreadCount}
+          </span>
+        )}
+      </div>
 
-    </div>
+      <div className="min-w-0 flex-1">
+
+        <div className="flex items-center justify-between gap-2">
+
+          <p
+            className={`truncate text-sm ${
+              unreadCount > 0
+                ? "font-bold text-gray-900"
+                : "font-semibold text-gray-800"
+            }`}
+          >
+            {person.full_name}
+          </p>
+
+          {lastMessage && (
+            <span className="shrink-0 text-[10px] text-gray-400">
+              {formatMessageDate(
+                lastMessage.created_at
+              )}
+            </span>
+          )}
+
+        </div>
+
+        <p className="mt-0.5 truncate text-[10px] font-medium text-[#0F2B7B]">
+          {getRoleLabel(person)}
+        </p>
+
+        <p
+          className={`mt-1 truncate text-xs ${
+            unreadCount > 0
+              ? "font-semibold text-gray-700"
+              : "text-gray-400"
+          }`}
+        >
+          {lastMessage
+            ? lastMessage.message
+            : "Start a conversation"}
+        </p>
+
+      </div>
+
+    </button>
   );
 }

@@ -876,60 +876,7 @@ export default function AuthorityRegistrationsPage() {
 
       <div className="lg:pl-60">
 
-        {/* TOP HEADER */}
-
-        <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-
-          <div className="flex h-[68px] items-center justify-between px-4 sm:px-6 lg:px-8">
-
-            <div className="flex items-center gap-3">
-
-              <button
-                onClick={() =>
-                  setMobileMenuOpen(true)
-                }
-                className="rounded-lg p-2 hover:bg-slate-100 lg:hidden"
-              >
-                <Menu size={23} />
-              </button>
-
-              <div>
-
-                <p className="hidden text-[11px] text-gray-400 sm:block">
-                  Aurora&apos;s Degree & PG College
-                </p>
-
-                <h1 className="text-lg font-bold text-[#0F2B7B]">
-                  Registrations
-                </h1>
-
-              </div>
-
-            </div>
-
-            <div className="flex items-center gap-3">
-
-              <div className="hidden text-right sm:block">
-
-                <p className="text-sm font-bold text-gray-800">
-                  {authority.full_name}
-                </p>
-
-                <p className="text-[10px] text-gray-500">
-                  {roleLabel}
-                </p>
-
-              </div>
-
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#0F2B7B] text-white">
-                <ShieldCheck size={19} />
-              </div>
-
-            </div>
-
-          </div>
-
-        </header>
+        
 
         {/* CONTENT */}
 
