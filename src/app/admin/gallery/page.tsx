@@ -56,7 +56,10 @@ interface GalleryForm {
   is_published: boolean;
 }
 
-type GalleryFilter = "All" | "Published" | "Draft";
+type GalleryFilter =
+  | "All"
+  | "Published"
+  | "Draft";
 
 /* =========================================================
    CONSTANTS
@@ -67,6 +70,14 @@ const STORAGE_BUCKET = "gallery";
 const MAX_IMAGES_PER_EVENT = 5;
 
 const MAX_VIDEO_PER_EVENT = 1;
+
+const MAX_IMAGE_SIZE =
+  10 * 1024 * 1024;
+
+const MAX_VIDEO_SIZE =
+  100 * 1024 * 1024;
+
+const MAX_IMAGES_PER_UPLOAD = 5;
 
 const emptyForm: GalleryForm = {
   title: "",
@@ -95,6 +106,7 @@ const categories = [
 
 function getFileExtension(file: File) {
   const parts = file.name.split(".");
+
   return parts.length > 1
     ? parts[parts.length - 1].toLowerCase()
     : "file";
@@ -108,16 +120,35 @@ function isVideo(file: File) {
   return file.type.startsWith("video/");
 }
 
+/*
+ * Your database currently uses "photo" for images.
+ * Internally we normalize both "photo" and "image"
+ * to "image".
+ */
+function normalizeMediaType(
+  value: string | null | undefined
+): MediaType {
+  return value === "video"
+    ? "video"
+    : "image";
+}
+
 /* =========================================================
    MAIN
 ========================================================= */
 
 export default function AdminGalleryPage() {
-  const [gallery, setGallery] = useState<GalleryItem[]>([]);
+  const [gallery, setGallery] =
+    useState<GalleryItem[]>([]);
 
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [saving, setSaving] =
+    useState(false);
 
   const [deletingId, setDeletingId] =
     useState<string | null>(null);
@@ -125,14 +156,20 @@ export default function AdminGalleryPage() {
   const [publishingId, setPublishingId] =
     useState<string | null>(null);
 
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [search, setSearch] = useState("");
+  const [success, setSuccess] =
+    useState("");
+
+  const [search, setSearch] =
+    useState("");
+
   const [filter, setFilter] =
     useState<GalleryFilter>("All");
 
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowForm] =
+    useState(false);
 
   const [editingItem, setEditingItem] =
     useState<GalleryItem | null>(null);
@@ -140,14 +177,20 @@ export default function AdminGalleryPage() {
   const [form, setForm] =
     useState<GalleryForm>(emptyForm);
 
-  const [selectedFile, setSelectedFile] =
-    useState<File | null>(null);
+  /*
+   * IMPORTANT:
+   * Multiple files are now supported.
+   */
+  const [selectedFiles, setSelectedFiles] =
+    useState<File[]>([]);
 
   /* =======================================================
-     LOAD
+     LOAD GALLERY
   ======================================================= */
 
-  const loadGallery = async (refresh = false) => {
+  const loadGallery = async (
+    refresh = false
+  ) => {
     if (refresh) {
       setRefreshing(true);
     } else {
@@ -185,23 +228,42 @@ export default function AdminGalleryPage() {
       const rows: GalleryItem[] =
         (data ?? []).map((item) => ({
           id: String(item.id),
+
           title: item.title,
-          description: item.description,
-          image_url: item.image_url,
-          event_id: item.event_id,
-          category: item.category,
-          uploaded_by: item.uploaded_by,
-          is_published: item.is_published,
-          created_at: item.created_at,
+
+          description:
+            item.description,
+
+          image_url:
+            item.image_url,
+
+          event_id:
+            item.event_id,
+
+          category:
+            item.category,
+
+          uploaded_by:
+            item.uploaded_by,
+
+          is_published:
+            item.is_published,
+
+          created_at:
+            item.created_at,
+
           media_type:
-            item.media_type === "video"
-              ? "video"
-              : "image",
+            normalizeMediaType(
+              item.media_type
+            ),
         }));
 
       setGallery(rows);
     } catch (err) {
-      console.error("Gallery loading error:", err);
+      console.error(
+        "Gallery loading error:",
+        err
+      );
 
       setError(
         err instanceof Error
@@ -240,25 +302,35 @@ export default function AdminGalleryPage() {
       ...emptyForm,
     });
 
-    setSelectedFile(null);
+    setSelectedFiles([]);
 
     setShowForm(true);
   };
 
-  const openEditForm = (item: GalleryItem) => {
+  const openEditForm = (
+    item: GalleryItem
+  ) => {
     clearMessages();
 
     setEditingItem(item);
 
     setForm({
       title: item.title || "",
-      description: item.description || "",
-      category: item.category || "General",
-      event_id: item.event_id || "",
-      is_published: item.is_published,
+
+      description:
+        item.description || "",
+
+      category:
+        item.category || "General",
+
+      event_id:
+        item.event_id || "",
+
+      is_published:
+        item.is_published,
     });
 
-    setSelectedFile(null);
+    setSelectedFiles([]);
 
     setShowForm(true);
   };
@@ -267,8 +339,10 @@ export default function AdminGalleryPage() {
     if (saving) return;
 
     setShowForm(false);
+
     setEditingItem(null);
-    setSelectedFile(null);
+
+    setSelectedFiles([]);
 
     setForm({
       ...emptyForm,
@@ -294,56 +368,145 @@ export default function AdminGalleryPage() {
   ) => {
     clearMessages();
 
-    const file = event.target.files?.[0];
+    const files = Array.from(
+      event.target.files || []
+    );
 
-    if (!file) {
-      setSelectedFile(null);
+    if (files.length === 0) {
+      setSelectedFiles([]);
       return;
     }
 
-    if (
-      !isImage(file) &&
-      !isVideo(file)
-    ) {
+    /*
+     * EDIT MODE
+     *
+     * Editing an existing record replaces only
+     * that one media item.
+     */
+    if (editingItem) {
+      if (files.length > 1) {
+        setError(
+          "When editing gallery media, please select only one replacement file."
+        );
+
+        event.target.value = "";
+
+        setSelectedFiles([]);
+
+        return;
+      }
+    }
+
+    /*
+     * Detect image/video selection.
+     */
+    const hasVideo = files.some(
+      (file) => isVideo(file)
+    );
+
+    const hasImage = files.some(
+      (file) => isImage(file)
+    );
+
+    /*
+     * Do not allow image + video together.
+     */
+    if (hasVideo && hasImage) {
       setError(
-        "Please select an image or video file."
+        "Please select either photos or one video, not both."
       );
 
       event.target.value = "";
-      setSelectedFile(null);
+
+      setSelectedFiles([]);
 
       return;
     }
 
-    if (
-      isImage(file) &&
-      file.size > 10 * 1024 * 1024
-    ) {
+    /*
+     * Only one video.
+     */
+    if (hasVideo && files.length > 1) {
       setError(
-        "Images must be smaller than 10 MB."
+        "Only one video can be uploaded at a time."
       );
 
       event.target.value = "";
-      setSelectedFile(null);
+
+      setSelectedFiles([]);
 
       return;
     }
 
+    /*
+     * Maximum five photos in one upload.
+     */
     if (
-      isVideo(file) &&
-      file.size > 100 * 1024 * 1024
+      hasImage &&
+      files.length > MAX_IMAGES_PER_UPLOAD
     ) {
       setError(
-        "Videos must be smaller than 100 MB."
+        `You can select a maximum of ${MAX_IMAGES_PER_UPLOAD} photos at once.`
       );
 
       event.target.value = "";
-      setSelectedFile(null);
+
+      setSelectedFiles([]);
 
       return;
     }
 
-    setSelectedFile(file);
+    /*
+     * Validate every selected file.
+     */
+    for (const file of files) {
+      if (
+        !isImage(file) &&
+        !isVideo(file)
+      ) {
+        setError(
+          `Unsupported file: ${file.name}`
+        );
+
+        event.target.value = "";
+
+        setSelectedFiles([]);
+
+        return;
+      }
+
+      if (
+        isImage(file) &&
+        file.size > MAX_IMAGE_SIZE
+      ) {
+        setError(
+          `${file.name} is larger than 10 MB.`
+        );
+
+        event.target.value = "";
+
+        setSelectedFiles([]);
+
+        return;
+      }
+
+      if (
+        isVideo(file) &&
+        file.size > MAX_VIDEO_SIZE
+      ) {
+        setError(
+          `${file.name} is larger than 100 MB.`
+        );
+
+        event.target.value = "";
+
+        setSelectedFiles([]);
+
+        return;
+      }
+    }
+
+    setSelectedFiles(files);
   };
 
   /* =======================================================
@@ -356,6 +519,9 @@ export default function AdminGalleryPage() {
     excludeId?: string
   ) => {
     return gallery.filter((item) => {
+      /*
+       * Exclude current item while editing.
+       */
       if (
         excludeId &&
         item.id === excludeId
@@ -363,26 +529,35 @@ export default function AdminGalleryPage() {
         return false;
       }
 
-      if (
-        eventId &&
-        item.event_id !== eventId
-      ) {
-        return false;
+      /*
+       * If event is selected, count only
+       * media belonging to that event.
+       */
+      if (eventId) {
+        if (
+          item.event_id !== eventId
+        ) {
+          return false;
+        }
+      } else {
+        /*
+         * For media without an event,
+         * only count media without an event.
+         */
+        if (item.event_id !== null) {
+          return false;
+        }
       }
 
-      if (
-        !eventId &&
-        item.event_id !== null
-      ) {
-        return false;
-      }
-
-      return item.media_type === mediaType;
+      return (
+        item.media_type ===
+        mediaType
+      );
     }).length;
   };
 
   /* =======================================================
-     UPLOAD
+     UPLOAD FILE
   ======================================================= */
 
   const uploadFile = async (
@@ -399,13 +574,18 @@ export default function AdminGalleryPage() {
 
     const {
       error: uploadError,
-    } = await supabase.storage
-      .from(STORAGE_BUCKET)
-      .upload(filePath, file, {
-        cacheControl: "3600",
-        upsert: false,
-        contentType: file.type,
-      });
+    } =
+      await supabase.storage
+        .from(STORAGE_BUCKET)
+        .upload(
+          filePath,
+          file,
+          {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type,
+          }
+        );
 
     if (uploadError) {
       throw uploadError;
@@ -413,11 +593,16 @@ export default function AdminGalleryPage() {
 
     const {
       data: publicData,
-    } = supabase.storage
-      .from(STORAGE_BUCKET)
-      .getPublicUrl(filePath);
+    } =
+      supabase.storage
+        .from(STORAGE_BUCKET)
+        .getPublicUrl(
+          filePath
+        );
 
-    if (!publicData.publicUrl) {
+    if (
+      !publicData.publicUrl
+    ) {
       throw new Error(
         "Unable to create public media URL."
       );
@@ -440,7 +625,9 @@ export default function AdminGalleryPage() {
       const index =
         url.indexOf(marker);
 
-      if (index === -1) return;
+      if (index === -1) {
+        return;
+      }
 
       const path =
         url.substring(
@@ -469,20 +656,42 @@ export default function AdminGalleryPage() {
 
     clearMessages();
 
+    /*
+     * TITLE
+     */
     if (!form.title.trim()) {
       setError(
         "Gallery title is required."
       );
+
       return;
     }
 
+    /*
+     * CREATE requires at least one file.
+     */
     if (
       !editingItem &&
-      !selectedFile
+      selectedFiles.length === 0
     ) {
       setError(
-        "Please select an image or video."
+        "Please select at least one photo or video."
       );
+
+      return;
+    }
+
+    /*
+     * EDIT allows maximum one replacement.
+     */
+    if (
+      editingItem &&
+      selectedFiles.length > 1
+    ) {
+      setError(
+        "Only one replacement file can be selected while editing."
+      );
+
       return;
     }
 
@@ -490,136 +699,119 @@ export default function AdminGalleryPage() {
 
     try {
       const eventId =
-        form.event_id.trim() || null;
+        form.event_id.trim() ||
+        null;
 
-      /* -----------------------------------------------
-         DETERMINE MEDIA TYPE
-      ------------------------------------------------ */
-
-      let mediaType: MediaType =
-        editingItem?.media_type ||
-        "image";
-
-      if (selectedFile) {
-        mediaType = isVideo(
-          selectedFile
-        )
-          ? "video"
-          : "image";
-      }
-
-      /* -----------------------------------------------
-         CHECK EVENT LIMITS
-      ------------------------------------------------ */
-
-      if (
-        selectedFile ||
-        !editingItem
-      ) {
-        const count =
-          getEventMediaCount(
-            eventId,
-            mediaType,
-            editingItem?.id
-          );
-
-        if (
-          mediaType === "image" &&
-          count >= MAX_IMAGES_PER_EVENT
-        ) {
-          throw new Error(
-            `This event already has ${MAX_IMAGES_PER_EVENT} photos. Maximum allowed is ${MAX_IMAGES_PER_EVENT} photos per event.`
-          );
-        }
-
-        if (
-          mediaType === "video" &&
-          count >= MAX_VIDEO_PER_EVENT
-        ) {
-          throw new Error(
-            "This event already has a video. Only 1 video is allowed per event."
-          );
-        }
-      }
-
-      /* -----------------------------------------------
-         UPLOAD FILE
-      ------------------------------------------------ */
-
-      let mediaUrl =
-        editingItem?.image_url || "";
-
-      if (selectedFile) {
-        mediaUrl =
-          await uploadFile(
-            selectedFile
-          );
-      }
-
-      /* -----------------------------------------------
-         CURRENT USER
-      ------------------------------------------------ */
-
-      const {
-        data: {
-          user,
-        },
-      } =
-        await supabase.auth.getUser();
-
-      /* -----------------------------------------------
-         PAYLOAD
-      ------------------------------------------------ */
-
-      const payload = {
-        title: form.title.trim(),
-
-        description:
-          form.description.trim() ||
-          null,
-
-        image_url: mediaUrl,
-
-        event_id: eventId,
-
-        category:
-          form.category.trim() ||
-          "General",
-
-        is_published:
-          form.is_published,
-
-        media_type: mediaType,
-
-        ...(user?.id
-          ? {
-              uploaded_by:
-                user.id,
-            }
-          : {}),
-      };
-
-      /* -----------------------------------------------
-         UPDATE
-      ------------------------------------------------ */
+      /*
+       * =================================================
+       * EDIT EXISTING MEDIA
+       * =================================================
+       */
 
       if (editingItem) {
+        let mediaUrl =
+          editingItem.image_url;
+
+        let databaseMediaType =
+          editingItem.media_type ===
+          "video"
+            ? "video"
+            : "photo";
+
+        /*
+         * If a new replacement file was
+         * selected, upload it first.
+         */
+        if (
+          selectedFiles.length === 1
+        ) {
+          const file =
+            selectedFiles[0];
+
+          mediaUrl =
+            await uploadFile(file);
+
+          databaseMediaType =
+            isVideo(file)
+              ? "video"
+              : "photo";
+        }
+
+        const {
+          data: {
+            user,
+          },
+        } =
+          await supabase.auth.getUser();
+
+        const payload = {
+          title:
+            form.title.trim(),
+
+          description:
+            form.description.trim() ||
+            null,
+
+          image_url:
+            mediaUrl,
+
+          event_id:
+            eventId,
+
+          category:
+            form.category.trim() ||
+            "General",
+
+          is_published:
+            form.is_published,
+
+          media_type:
+            databaseMediaType,
+
+          ...(user?.id
+            ? {
+                uploaded_by:
+                  user.id,
+              }
+            : {}),
+        };
+
         const {
           error: updateError,
-        } = await supabase
-          .from("gallery")
-          .update(payload)
-          .eq(
-            "id",
-            editingItem.id
-          );
+        } =
+          await supabase
+            .from("gallery")
+            .update(payload)
+            .eq(
+              "id",
+              editingItem.id
+            );
 
         if (updateError) {
+          /*
+           * If new storage file was uploaded
+           * but database update failed,
+           * remove the new file.
+           */
+          if (
+            selectedFiles.length === 1 &&
+            mediaUrl !==
+              editingItem.image_url
+          ) {
+            await deleteStorageFile(
+              mediaUrl
+            );
+          }
+
           throw updateError;
         }
 
+        /*
+         * Remove old file only after
+         * successful database update.
+         */
         if (
-          selectedFile &&
+          selectedFiles.length === 1 &&
           editingItem.image_url !==
             mediaUrl
         ) {
@@ -635,21 +827,200 @@ export default function AdminGalleryPage() {
         );
       }
 
-      /* -----------------------------------------------
-         INSERT
-      ------------------------------------------------ */
+      /*
+       * =================================================
+       * CREATE NEW MEDIA
+       * =================================================
+       */
 
       else {
+        const files =
+          selectedFiles;
+
+        const isVideoUpload =
+          files.length === 1 &&
+          isVideo(files[0]);
+
+        /*
+         * =================================================
+         * CHECK EVENT LIMITS
+         * =================================================
+         */
+
+        if (eventId) {
+          const existingPhotoCount =
+            getEventMediaCount(
+              eventId,
+              "image"
+            );
+
+          const existingVideoCount =
+            getEventMediaCount(
+              eventId,
+              "video"
+            );
+
+          /*
+           * PHOTO LIMIT
+           */
+          if (!isVideoUpload) {
+            const totalAfterUpload =
+              existingPhotoCount +
+              files.length;
+
+            if (
+              totalAfterUpload >
+              MAX_IMAGES_PER_EVENT
+            ) {
+              const remaining =
+                Math.max(
+                  MAX_IMAGES_PER_EVENT -
+                    existingPhotoCount,
+                  0
+                );
+
+              if (remaining === 0) {
+                throw new Error(
+                  `This event already has the maximum ${MAX_IMAGES_PER_EVENT} photos.`
+                );
+              }
+
+              throw new Error(
+                `This event can accept only ${remaining} more photo${remaining === 1 ? "" : "s"}. Maximum is ${MAX_IMAGES_PER_EVENT} photos per event.`
+              );
+            }
+          }
+
+          /*
+           * VIDEO LIMIT
+           */
+          if (isVideoUpload) {
+            if (
+              existingVideoCount >=
+              MAX_VIDEO_PER_EVENT
+            ) {
+              throw new Error(
+                "This event already has a video. Only 1 video is allowed per event."
+              );
+            }
+          }
+        }
+
+        /*
+         * =================================================
+         * GET CURRENT USER
+         * =================================================
+         */
+
+        const {
+          data: {
+            user,
+          },
+        } =
+          await supabase.auth.getUser();
+
+        /*
+         * =================================================
+         * UPLOAD ALL FILES
+         * =================================================
+         */
+
+        const uploadedUrls: string[] =
+          [];
+
+        try {
+          for (
+            const file of files
+          ) {
+            const url =
+              await uploadFile(
+                file
+              );
+
+            uploadedUrls.push(
+              url
+            );
+          }
+        } catch (uploadError) {
+          /*
+           * If any upload fails,
+           * remove files already uploaded.
+           */
+          for (
+            const url of
+              uploadedUrls
+          ) {
+            await deleteStorageFile(
+              url
+            );
+          }
+
+          throw uploadError;
+        }
+
+        /*
+         * =================================================
+         * CREATE ONE DATABASE ROW
+         * FOR EACH FILE
+         * =================================================
+         */
+
+        const rows =
+          uploadedUrls.map(
+            (url) => ({
+              title:
+                form.title.trim(),
+
+              description:
+                form.description.trim() ||
+                null,
+
+              image_url:
+                url,
+
+              event_id:
+                eventId,
+
+              category:
+                form.category.trim() ||
+                "General",
+
+              uploaded_by:
+                user?.id || null,
+
+              is_published:
+                form.is_published,
+
+              /*
+               * IMPORTANT:
+               * Your database uses "photo"
+               * for image records.
+               */
+              media_type:
+                isVideoUpload
+                  ? "video"
+                  : "photo",
+            })
+          );
+
         const {
           error: insertError,
-        } = await supabase
-          .from("gallery")
-          .insert(payload);
+        } =
+          await supabase
+            .from("gallery")
+            .insert(rows);
 
         if (insertError) {
-          if (selectedFile) {
+          /*
+           * Database insert failed.
+           * Remove all uploaded files.
+           */
+          for (
+            const url of
+              uploadedUrls
+          ) {
             await deleteStorageFile(
-              mediaUrl
+              url
             );
           }
 
@@ -658,13 +1029,19 @@ export default function AdminGalleryPage() {
 
         setSuccess(
           form.is_published
-            ? "Gallery media added and published successfully."
-            : "Gallery media saved as draft successfully."
+            ? `${files.length} ${files.length === 1 ? "media item" : "media items"} uploaded and published successfully.`
+            : `${files.length} ${files.length === 1 ? "media item" : "media items"} saved as draft successfully.`
         );
       }
 
+      /*
+       * CLOSE FORM
+       */
       closeForm();
 
+      /*
+       * REFRESH GALLERY
+       */
       await loadGallery(true);
     } catch (err) {
       console.error(
@@ -694,7 +1071,9 @@ export default function AdminGalleryPage() {
         `Are you sure you want to delete "${item.title}"?`
       );
 
-    if (!confirmed) return;
+    if (!confirmed) {
+      return;
+    }
 
     clearMessages();
 
@@ -703,24 +1082,32 @@ export default function AdminGalleryPage() {
     try {
       const {
         error: deleteError,
-      } = await supabase
-        .from("gallery")
-        .delete()
-        .eq("id", item.id);
+      } =
+        await supabase
+          .from("gallery")
+          .delete()
+          .eq(
+            "id",
+            item.id
+          );
 
       if (deleteError) {
         throw deleteError;
       }
 
-      await deleteStorageFile(
-        item.image_url
-      );
+      if (item.image_url) {
+        await deleteStorageFile(
+          item.image_url
+        );
+      }
 
-      setGallery((current) =>
-        current.filter(
-          (galleryItem) =>
-            galleryItem.id !== item.id
-        )
+      setGallery(
+        (current) =>
+          current.filter(
+            (galleryItem) =>
+              galleryItem.id !==
+              item.id
+          )
       );
 
       setSuccess(
@@ -759,29 +1146,35 @@ export default function AdminGalleryPage() {
 
       const {
         error: updateError,
-      } = await supabase
-        .from("gallery")
-        .update({
-          is_published: newStatus,
-        })
-        .eq("id", item.id);
+      } =
+        await supabase
+          .from("gallery")
+          .update({
+            is_published:
+              newStatus,
+          })
+          .eq(
+            "id",
+            item.id
+          );
 
       if (updateError) {
         throw updateError;
       }
 
-      setGallery((current) =>
-        current.map(
-          (galleryItem) =>
-            galleryItem.id ===
-            item.id
-              ? {
-                  ...galleryItem,
-                  is_published:
-                    newStatus,
-                }
-              : galleryItem
-        )
+      setGallery(
+        (current) =>
+          current.map(
+            (galleryItem) =>
+              galleryItem.id ===
+              item.id
+                ? {
+                    ...galleryItem,
+                    is_published:
+                      newStatus,
+                  }
+                : galleryItem
+          )
       );
 
       setSuccess(
@@ -827,13 +1220,15 @@ export default function AdminGalleryPage() {
   const photoCount =
     gallery.filter(
       (item) =>
-        item.media_type === "image"
+        item.media_type ===
+        "image"
     ).length;
 
   const videoCount =
     gallery.filter(
       (item) =>
-        item.media_type === "video"
+        item.media_type ===
+        "video"
     ).length;
 
   /* =======================================================
@@ -897,7 +1292,9 @@ export default function AdminGalleryPage() {
   const formatDate = (
     value: string
   ) => {
-    if (!value) return "—";
+    if (!value) {
+      return "—";
+    }
 
     const date =
       new Date(value);
@@ -928,7 +1325,9 @@ export default function AdminGalleryPage() {
     <AdminDashboardLayout>
       <div className="mx-auto w-full max-w-7xl space-y-6">
 
-        {/* HEADER */}
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
@@ -967,6 +1366,7 @@ export default function AdminGalleryPage() {
                     : ""
                 }`}
               />
+
               Refresh
             </button>
 
@@ -978,19 +1378,23 @@ export default function AdminGalleryPage() {
               className="inline-flex items-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 text-sm font-bold text-white hover:bg-[#143a96]"
             >
               <Plus className="h-5 w-5" />
+
               Add Media
             </button>
 
           </div>
         </div>
 
-        {/* SUCCESS */}
+        {/* =================================================
+            SUCCESS
+        ================================================= */}
 
         {success && (
           <div className="flex items-center justify-between rounded-2xl border border-green-200 bg-green-50 px-5 py-4 text-green-800">
 
             <div className="flex items-center gap-3">
               <CheckCircle className="h-5 w-5" />
+
               <p className="text-sm font-semibold">
                 {success}
               </p>
@@ -1008,7 +1412,9 @@ export default function AdminGalleryPage() {
           </div>
         )}
 
-        {/* ERROR */}
+        {/* =================================================
+            ERROR
+        ================================================= */}
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-red-800">
@@ -1039,7 +1445,9 @@ export default function AdminGalleryPage() {
           </div>
         )}
 
-        {/* STATS */}
+        {/* =================================================
+            STATS
+        ================================================= */}
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
 
@@ -1085,7 +1493,9 @@ export default function AdminGalleryPage() {
 
         </div>
 
-        {/* MANAGEMENT */}
+        {/* =================================================
+            MANAGEMENT
+        ================================================= */}
 
         <section className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100">
 
@@ -1110,7 +1520,9 @@ export default function AdminGalleryPage() {
                 <input
                   type="text"
                   value={search}
-                  onChange={(event) =>
+                  onChange={(
+                    event
+                  ) =>
                     setSearch(
                       event.target.value
                     )
@@ -1132,7 +1544,6 @@ export default function AdminGalleryPage() {
                   "Draft",
                 ] as GalleryFilter[]
               ).map((item) => {
-
                 const count =
                   item === "All"
                     ? totalCount
@@ -1184,6 +1595,8 @@ export default function AdminGalleryPage() {
             </div>
           ) : filteredGallery.length === 0 ? (
 
+            /* EMPTY */
+
             <div className="p-14 text-center">
 
               <ImageIcon className="mx-auto h-12 w-12 text-gray-300" />
@@ -1206,12 +1619,15 @@ export default function AdminGalleryPage() {
                     className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#0F2B7B] px-5 py-3 text-sm font-bold text-white"
                   >
                     <Plus className="h-4 w-4" />
+
                     Add First Media
                   </button>
                 )}
 
             </div>
           ) : (
+
+            /* GALLERY GRID */
 
             <div className="grid gap-5 p-5 sm:grid-cols-2 sm:p-6 lg:grid-cols-3 xl:grid-cols-4">
 
@@ -1254,33 +1670,41 @@ export default function AdminGalleryPage() {
                         />
                       )}
 
+                      {/* MEDIA TYPE */}
+
                       <div className="absolute left-3 top-3">
 
                         {item.media_type ===
                         "video" ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-purple-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm">
                             <Video className="h-3.5 w-3.5" />
+
                             Video
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm">
                             <ImageIcon className="h-3.5 w-3.5" />
+
                             Photo
                           </span>
                         )}
 
                       </div>
 
+                      {/* STATUS */}
+
                       <div className="absolute right-3 top-3">
 
                         {item.is_published ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-green-700 shadow-sm">
                             <CheckCircle className="h-3.5 w-3.5" />
+
                             Published
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-orange-700 shadow-sm">
                             <EyeOff className="h-3.5 w-3.5" />
+
                             Draft
                           </span>
                         )}
@@ -1341,6 +1765,7 @@ export default function AdminGalleryPage() {
                               : "bg-green-600 text-white"
                           }`}
                         >
+
                           {publishingId ===
                           item.id ? (
                             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1353,6 +1778,7 @@ export default function AdminGalleryPage() {
                           {item.is_published
                             ? "Hide"
                             : "Publish"}
+
                         </button>
 
                         <button
@@ -1365,6 +1791,7 @@ export default function AdminGalleryPage() {
                           className="inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs font-bold text-gray-700"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
+
                           Edit
                         </button>
 
@@ -1381,6 +1808,7 @@ export default function AdminGalleryPage() {
                           }
                           className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-2 text-xs font-bold text-red-700"
                         >
+
                           {deletingId ===
                           item.id ? (
                             <RefreshCw className="h-3.5 w-3.5 animate-spin" />
@@ -1405,7 +1833,7 @@ export default function AdminGalleryPage() {
         </section>
 
         {/* =================================================
-            MODAL
+            ADD / EDIT MODAL
         ================================================= */}
 
         {showForm && (
@@ -1438,7 +1866,9 @@ export default function AdminGalleryPage() {
                     </h2>
 
                     <p className="mt-1 text-sm text-gray-500">
-                      Up to 5 photos and 1 video per event.
+                      {editingItem
+                        ? "Replace the selected media."
+                        : "Upload up to 5 photos or one video."}
                     </p>
 
                   </div>
@@ -1467,43 +1897,97 @@ export default function AdminGalleryPage() {
                 className="space-y-6 p-6"
               >
 
-                {/* FILE */}
+                {/* =================================================
+                    FILE UPLOAD
+                ================================================= */}
 
                 <div>
 
                   <label className="mb-2 block text-sm font-bold text-gray-700">
+
                     {editingItem
                       ? "Replace Media"
-                      : "Upload Photo / Video"}
+                      : "Upload Photos / Video"}
+
                     {!editingItem && (
                       <span className="text-red-500">
                         {" "}*
                       </span>
                     )}
+
                   </label>
 
                   <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center transition hover:border-[#0F2B7B] hover:bg-blue-50">
 
-                    {selectedFile ? (
-                      <>
-                        {isVideo(
-                          selectedFile
-                        ) ? (
-                          <FileVideo className="h-10 w-10 text-purple-600" />
-                        ) : (
-                          <ImageIcon className="h-10 w-10 text-blue-600" />
-                        )}
+                    {selectedFiles.length >
+                    0 ? (
+                      <div className="w-full">
 
-                        <p className="mt-3 text-sm font-bold text-gray-800">
-                          {
-                            selectedFile.name
-                          }
+                        {/* SELECTED FILES */}
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+
+                          {selectedFiles.map(
+                            (
+                              file,
+                              index
+                            ) => (
+                              <div
+                                key={`${file.name}-${index}`}
+                                className="rounded-xl border border-slate-200 bg-white p-3 text-left"
+                              >
+
+                                <div className="flex items-center gap-3">
+
+                                  {isVideo(
+                                    file
+                                  ) ? (
+                                    <FileVideo className="h-8 w-8 shrink-0 text-purple-600" />
+                                  ) : (
+                                    <ImageIcon className="h-8 w-8 shrink-0 text-blue-600" />
+                                  )}
+
+                                  <div className="min-w-0">
+
+                                    <p className="truncate text-xs font-bold text-gray-800">
+                                      {file.name}
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      {(
+                                        file.size /
+                                        (1024 *
+                                          1024)
+                                      ).toFixed(
+                                        2
+                                      )}{" "}
+                                      MB
+                                    </p>
+
+                                  </div>
+
+                                </div>
+
+                              </div>
+                            )
+                          )}
+
+                        </div>
+
+                        <p className="mt-4 text-sm font-bold text-[#0F2B7B]">
+                          {selectedFiles.length}{" "}
+                          {selectedFiles.length ===
+                          1
+                            ? "file"
+                            : "files"}{" "}
+                          selected
                         </p>
 
                         <p className="mt-1 text-xs text-gray-500">
-                          Click to choose another file
+                          Click to choose different files
                         </p>
-                      </>
+
+                      </div>
                     ) : (
                       <>
                         <Upload className="h-10 w-10 text-gray-400" />
@@ -1513,6 +1997,12 @@ export default function AdminGalleryPage() {
                         </p>
 
                         <p className="mt-1 text-xs text-gray-500">
+                          {editingItem
+                            ? "Select one replacement file"
+                            : "Select up to 5 photos at once"}
+                        </p>
+
+                        <p className="mt-1 text-xs text-gray-400">
                           JPG, PNG, WEBP or MP4
                         </p>
                       </>
@@ -1521,6 +2011,9 @@ export default function AdminGalleryPage() {
                     <input
                       type="file"
                       accept="image/*,video/*"
+                      multiple={
+                        !editingItem
+                      }
                       onChange={
                         handleFileChange
                       }
@@ -1535,15 +2028,20 @@ export default function AdminGalleryPage() {
 
                 </div>
 
-                {/* TITLE */}
+                {/* =================================================
+                    TITLE
+                ================================================= */}
 
                 <div>
 
                   <label className="mb-2 block text-sm font-bold text-gray-700">
+
                     Title
+
                     <span className="text-red-500">
                       {" "}*
                     </span>
+
                   </label>
 
                   <input
@@ -1556,8 +2054,7 @@ export default function AdminGalleryPage() {
                     ) =>
                       updateForm(
                         "title",
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="NSS Community Service Programme"
@@ -1567,7 +2064,9 @@ export default function AdminGalleryPage() {
 
                 </div>
 
-                {/* EVENT ID */}
+                {/* =================================================
+                    EVENT ID
+                ================================================= */}
 
                 <div>
 
@@ -1585,8 +2084,7 @@ export default function AdminGalleryPage() {
                     ) =>
                       updateForm(
                         "event_id",
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     placeholder="Paste the event UUID"
@@ -1599,7 +2097,9 @@ export default function AdminGalleryPage() {
 
                 </div>
 
-                {/* CATEGORY */}
+                {/* =================================================
+                    CATEGORY
+                ================================================= */}
 
                 <div>
 
@@ -1620,12 +2120,12 @@ export default function AdminGalleryPage() {
                       ) =>
                         updateForm(
                           "category",
-                          event.target
-                            .value
+                          event.target.value
                         )
                       }
                       className="w-full appearance-none rounded-xl border border-slate-300 bg-white px-4 py-3 pl-11 text-sm outline-none focus:border-[#0F2B7B] focus:ring-2 focus:ring-blue-100"
                     >
+
                       {categories.map(
                         (
                           category
@@ -1644,13 +2144,16 @@ export default function AdminGalleryPage() {
                           </option>
                         )
                       )}
+
                     </select>
 
                   </div>
 
                 </div>
 
-                {/* DESCRIPTION */}
+                {/* =================================================
+                    DESCRIPTION
+                ================================================= */}
 
                 <div>
 
@@ -1667,8 +2170,7 @@ export default function AdminGalleryPage() {
                     ) =>
                       updateForm(
                         "description",
-                        event.target
-                          .value
+                        event.target.value
                       )
                     }
                     rows={4}
@@ -1678,7 +2180,9 @@ export default function AdminGalleryPage() {
 
                 </div>
 
-                {/* PUBLISH */}
+                {/* =================================================
+                    PUBLISH
+                ================================================= */}
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
 
@@ -1694,8 +2198,7 @@ export default function AdminGalleryPage() {
                       ) =>
                         updateForm(
                           "is_published",
-                          event.target
-                            .checked
+                          event.target.checked
                         )
                       }
                       className="mt-1 h-5 w-5"
@@ -1717,7 +2220,9 @@ export default function AdminGalleryPage() {
 
                 </div>
 
-                {/* ACTIONS */}
+                {/* =================================================
+                    ACTIONS
+                ================================================= */}
 
                 <div className="flex flex-col-reverse gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:justify-end">
 

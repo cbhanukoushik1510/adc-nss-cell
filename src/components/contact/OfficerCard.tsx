@@ -35,7 +35,7 @@ export default function OfficerCard() {
 
               <h2 className="mt-6 text-4xl font-bold">
 
-                Programme Officer Name
+                Dr. B. Sharat Babu
 
               </h2>
 
@@ -53,7 +53,7 @@ export default function OfficerCard() {
 
                   <Mail size={20} />
 
-                  officer@college.edu.in
+                  nss@adc.edu.in
 
                 </div>
 
@@ -61,7 +61,7 @@ export default function OfficerCard() {
 
                   <Phone size={20} />
 
-                  +91 XXXXX XXXXX
+                  +91 9100000053
 
                 </div>
 

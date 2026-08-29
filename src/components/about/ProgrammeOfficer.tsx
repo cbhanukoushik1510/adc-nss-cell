@@ -34,7 +34,7 @@ export default function ProgrammeOfficer() {
 
               <h2 className="mt-6 text-4xl font-bold">
 
-                Dr. Programme Officer Name
+                Dr. B. Sharat Babu
 
               </h2>
 
@@ -53,7 +53,7 @@ export default function ProgrammeOfficer() {
 
                   <Mail size={20} />
 
-                  officer@college.edu.in
+                  nss@adc.edu.in
 
                 </div>
 
@@ -61,7 +61,7 @@ export default function ProgrammeOfficer() {
 
                   <Phone size={20} />
 
-                  +91 XXXXX XXXXX
+                  +91 91000 00053
 
                 </div>
 

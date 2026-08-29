@@ -2,32 +2,33 @@ import { Award } from "lucide-react";
 
 export default function Hero() {
   return (
-    <section className="bg-gradient-to-r from-[#0F2B7B] to-[#1E40AF] py-24 text-white">
+    <section className="relative overflow-hidden bg-gradient-to-r from-[#0F2B7B] via-[#1746A2] to-[#2563EB] py-12 text-white md:py-14">
 
-      <div className="mx-auto max-w-7xl px-6 text-center">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 opacity-10">
+        <div className="h-full w-full bg-[radial-gradient(circle_at_center,white_1px,transparent_1px)] bg-[length:30px_30px]" />
+      </div>
 
-        <Award
-          size={70}
-          className="mx-auto mb-6"
-        />
+      <div className="relative mx-auto max-w-6xl px-5 text-center md:px-6">
 
-        <h1 className="text-5xl font-bold">
+        {/* Icon */}
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/10 md:h-20 md:w-20">
+          <Award size={32} className="md:hidden" />
+          <Award size={40} className="hidden md:block" />
+        </div>
 
+        {/* Heading */}
+        <h1 className="mt-5 text-3xl font-extrabold sm:text-4xl md:mt-6 md:text-5xl">
           Hall of Leadership
-
         </h1>
 
-        <p className="mx-auto mt-6 max-w-3xl text-xl text-blue-100">
-
-          Honouring every leader who dedicated
-          their time, passion and service to the
-          National Service Scheme at
-          Aurora Degree & PG College.
-
+        {/* Description */}
+        <p className="mx-auto mt-4 max-w-3xl text-sm leading-6 text-blue-100 sm:text-base md:mt-5 md:text-lg md:leading-7">
+          Honouring every leader who dedicated their time, passion and service
+          to the National Service Scheme at Aurora Degree &amp; PG College.
         </p>
 
       </div>
-
     </section>
   );
 }
