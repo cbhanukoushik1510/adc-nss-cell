@@ -117,7 +117,7 @@ export default function UpcomingEvents() {
         </h2>
 
         <Link
-          href="/dashboard/events"
+          href="/volunteer/events"
           className="text-sm font-semibold text-[#0F2B7B]"
         >
           View All →

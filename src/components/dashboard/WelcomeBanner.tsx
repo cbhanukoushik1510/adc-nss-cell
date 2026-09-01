@@ -180,7 +180,7 @@ export default function WelcomeBanner() {
 
               <span>
                 {volunteer.nss_unit
-                  ? `Unit ${volunteer.nss_unit}`
+                  ? ` ${volunteer.nss_unit}`
                   : "NSS Unit —"}
               </span>
             </div>
