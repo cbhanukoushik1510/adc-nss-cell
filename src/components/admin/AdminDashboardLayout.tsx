@@ -58,12 +58,6 @@ const menus = [
   },
 
   {
-    title: "Certificates",
-    icon: Award,
-    href: "/admin/certificates",
-  },
-
-  {
     title: "Gallery",
     icon: ImageIcon,
     href: "/admin/gallery",
@@ -75,11 +69,7 @@ const menus = [
     href: "/admin/announcements",
   },
 
-  {
-    title: "Settings",
-    icon: Settings,
-    href: "/admin/settings",
-  },
+ 
 ];
 
 interface MenuItem {

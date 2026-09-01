@@ -28,6 +28,11 @@ const menus = [
     href: "/volunteer/profile",
   },
   {
+    title: "Events",
+    icon: CalendarDays,
+    href: "/volunteer/events",
+  },
+  {
     title: "Attendance",
     icon: CalendarDays,
     href: "/volunteer/attendance",
@@ -37,21 +42,13 @@ const menus = [
     icon: ClipboardList,
     href: "/volunteer/activities",
   },
-  {
-    title: "Certificates",
-    icon: Award,
-    href: "/volunteer/certificates",
-  },
+  
   {
     title: "Gallery",
     icon: ImageIcon,
     href: "/volunteer/gallery",
   },
-  {
-    title: "Settings",
-    icon: Settings,
-    href: "/volunteer/settings",
-  },
+  
 ];
 
 export default function Sidebar() {
